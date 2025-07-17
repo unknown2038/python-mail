@@ -1,0 +1,7 @@
+Flask==2.3.3
+psycopg2==2.9.9
+SQLAlchemy==2.0.41
+alembic==1.13.1
+google==3.0.0
+google-auth==2.29.0
+google-auth-oauthlib==1.2.0
