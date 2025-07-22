@@ -1,4 +1,4 @@
-import psycopg2
+import asyncpg
 import config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -12,12 +12,12 @@ from sqlalchemy.orm import declarative_base
 Base = declarative_base()
 
 
-def get_db_connection():
+async def get_db_connection():
     try:
-        conn = psycopg2.connect(
+        conn = await asyncpg.connect(
             host=config.DATABASE_HOST,
             port=config.DATABASE_PORT,
-            dbname=config.DATABASE_NAME,
+            database=config.DATABASE_NAME,
             user=config.DATABASE_USER,
             password=config.DATABASE_PASSWORD,
         )
