@@ -59,8 +59,8 @@ def mail_object(mail_content, is_sent, username, name):
          "body": plain_content,
          "message_id": mail_content['Message-ID'] or '',
          "receive_date": ist_date,
-         "in_reply_to": mail_content.get('In-Reply-To') or None,
-         "references": mail_content.get('References') or None,
+         "in_reply_to": None if not mail_content.get('In-Reply-To') or mail_content.get('In-Reply-To').strip() in ("", "<>") else mail_content.get('In-Reply-To').strip(),
+         "references": None if not mail_content.get('References') or mail_content.get('References').strip() in ("", "<>") else mail_content.get('References').strip(),
          "attachments": attachment_count,
       }
    except Exception as e:

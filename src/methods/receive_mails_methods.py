@@ -111,21 +111,24 @@ async def save_mails(mails, username, name):
       print("No connection to the database")
       return None
    try:
+      mail_objects = []
       for mail in mails:
          msg_id = mail["content"].get("Message-ID", "")
          if not msg_id:
-            continue
-         if await is_mail_not_exists(msg_id):
+            continue      
+         mail_in_not_receive = await is_mail_not_exists(msg_id)
+         if mail_in_not_receive:
             mail_obj = mail_object(mail["content"], mail["is_sent"], username, name)
-            print(mail_obj)
+            mail_objects.append(mail_obj)
          else:
             continue
-         
+      if mail_objects:
+         await reset_primary_key(conn, "mail_receive")
+         await inset_mail_in_db(conn,mail_objects)
    except Exception as e:
       print(f"Error while saving mails: {e}")
    finally:
       await conn.close()
-
 
 async def is_mail_not_exists(msg_id):
    conn = await get_db_connection()
@@ -137,18 +140,43 @@ async def is_mail_not_exists(msg_id):
          SELECT NOT EXISTS (SELECT 1 FROM public.mail_receive WHERE message_id = $1)
          """,msg_id)
       # True if mail not exists, False if mail exists
-      if mail_in_receive:
+      if mail_in_receive: # Mail Not exists in table
          mail_in_trash = await conn.fetchval("""
             SELECT NOT EXISTS (SELECT 1 FROM public.mail_trash WHERE message_id = $1)
             """,msg_id)
-         if mail_in_trash:
-            return True
-         else:
-            return False
+         return mail_in_trash
       else:
-         return True
+         return mail_in_receive # Mail Exists in table
    except Exception as e:
-      print(f"Error while saving mails: {e}")
+      print(f"Error while checking if mail exists: {e}")
    finally:
       await conn.close()
 
+async def inset_mail_in_db(conn,mail_objects):
+   try:
+      query = """ 
+      INSERT INTO public.mail_receive
+      (mail_id, mail_id_name, is_self_sent_mail, from_id, to_ids, cc_ids, bcc_ids, subject, message_id, html, body, receive_date, attachments, in_reply_to, "references")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      """
+      values = [
+         (mail_obj["mail_id"], mail_obj["mail_id_name"], mail_obj["is_self_sent_mail"], mail_obj["from_id"], mail_obj["to_ids"], mail_obj["cc_ids"], mail_obj["bcc_ids"], 
+         mail_obj["subject"], mail_obj["message_id"], mail_obj["html"], mail_obj["body"], mail_obj["receive_date"], mail_obj["attachments"], mail_obj["in_reply_to"], mail_obj["references"])
+         for mail_obj in mail_objects
+      ]
+      
+      async with conn.transaction(): 
+         await conn.executemany(query, values)
+         print(f"Mail inserted in db: {len(mail_objects)} of {mail_objects[0]['mail_id_name']}")
+   except Exception as e:
+      print(f"Error while inserting mail in db: {e}")
+
+async def reset_primary_key(conn, table):
+   try:
+      seq_row = await conn.fetchrow(f"SELECT pg_get_serial_sequence('public.\"{table}\"', 'id') AS seq;")
+      seq_name = seq_row["seq"]
+      max_row = await conn.fetchrow(f'SELECT COALESCE(MAX(id), 0) AS max_id FROM public."{table}";')
+      max_id = max_row["max_id"]
+      await conn.execute(f"ALTER SEQUENCE {seq_name} RESTART WITH {max_id + 1};")
+   except Exception as e:
+      print(f"Error while resetting primary key: {e}")
