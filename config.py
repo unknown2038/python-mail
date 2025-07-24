@@ -7,3 +7,5 @@ DATABASE_PORT = 5432
 DATABASE_NAME = "designcore_execution"
 DATABASE_USER = "root"
 DATABASE_PASSWORD = "URMANISH123"
+
+RECEIVE_FOLDER_PATH = '/mnt/backup/Upload/New_Mail'

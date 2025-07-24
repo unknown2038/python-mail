@@ -1,21 +1,16 @@
 from database.db import get_db_connection
 
 
-def fetch_employee_by_id(employee_id):
-    conn = get_db_connection()
+async def fetch_employee_by_id(employee_id):
+    conn = await get_db_connection()
     if not conn:
+        print("No connection to the database")
         return None
-
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """
+        row = await conn.fetchrow("""
             SELECT e.id, e.cosec_id, e.role, e.department, ejd.first_name, ejd.last_name  
-            FROM public.employees e JOIN public.employee_job_details ejd ON e."detailsId" = ejd.id WHERE e.id = %s 
-            """,
-            (employee_id,),
-        )
-        row = cur.fetchone()
+            FROM public.employees e JOIN public.employee_job_details ejd ON e."detailsId" = ejd.id WHERE e.id = $1 
+            """,employee_id)
         if row:
             return {
                 "id": row[0],
@@ -28,9 +23,7 @@ def fetch_employee_by_id(employee_id):
         return None
     except Exception as e:
         print(f"Error fetching employees: {e}")
-        return []
-    finally:
-        conn.close()
+        return None
 
 
 def fetch_employees():

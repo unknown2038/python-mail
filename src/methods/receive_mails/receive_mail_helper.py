@@ -1,0 +1,148 @@
+import pytz
+import email.utils
+from bs4 import BeautifulSoup
+import email
+from email import policy
+
+def convert_email_date_to_ist(date_header_value):
+   try:
+      if not date_header_value:
+         return None
+
+      # Parse RFC 2822 date (e.g., "Mon, 22 Jul 2025 10:15:00 -0700")
+      dt = email.utils.parsedate_to_datetime(date_header_value)
+      # Ensure it's timezone-aware (some emails might lack tzinfo)
+      if dt.tzinfo is None:
+         dt = pytz.UTC.localize(dt)
+      # Convert to IST
+      ist = pytz.timezone("Asia/Kolkata")
+      ist_dt = dt.astimezone(ist)
+      
+      # Remove tzinfo for PostgreSQL timestamp (if your column is without tz)
+      return ist_dt.replace(tzinfo=None)
+
+   except Exception as e:
+      print(f"Error while converting email date to IST: {e}")
+      return None
+
+def mail_object(mail_content, is_sent, username, name):
+   try:
+      def split_emails(value):
+         return [x.strip() for x in value.split(',')] if value else [] # Convert "a@b.com, c@d.com" -> ['a@b.com', 'c@d.com'] or [] if None
+
+      # Convert date to IST (if exists)
+      date_header = mail_content.get('Date')
+      ist_date = convert_email_date_to_ist(date_header) if date_header else None
+      plain_content, html_content = extract_mail_bodies(mail_content)
+      attachment_count = 0
+      for part in mail_content.walk():
+         content_disposition = str(part.get("Content-Disposition") or "")
+         if "attachment" in content_disposition.lower():
+               attachment_count += 1
+      return {
+         "mail_id": username,
+         "mail_id_name": name,
+         "is_self_sent_mail": is_sent,
+         "from_id": mail_content.get('From') or None,
+         "to_ids": split_emails(mail_content.get('To')),
+         "cc_ids": split_emails(mail_content.get('Cc')),
+         "bcc_ids": split_emails(mail_content.get('Bcc')),
+         "subject": mail_content.get('Subject') or 'No Subject',
+         "html":html_content,
+         "body": plain_content,
+         "message_id": mail_content['Message-ID'] or '',
+         "receive_date": ist_date,
+         "in_reply_to": None if not mail_content.get('In-Reply-To') or mail_content.get('In-Reply-To').strip() in ("", "<>") else mail_content.get('In-Reply-To').strip(),
+         "references": None if not mail_content.get('References') or mail_content.get('References').strip() in ("", "<>") else mail_content.get('References').strip(),
+         "attachments": attachment_count,
+         "attachments_data": get_attachments_from_email(mail_content)
+      }
+   except Exception as e:
+      print(f"Error while making mail object: {e}")
+      return None
+
+def extract_mail_bodies(mail_content):
+   """
+   Extract plain text and HTML bodies from an email.
+   Returns: (plain_text, html_text)
+   """
+   plain_body = None
+   html_body = None
+
+   for part in mail_content.walk():
+      content_type = part.get_content_type()
+      if content_type == "text/plain" and not plain_body:
+         plain_body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="ignore")
+      elif content_type == "text/html" and not html_body:
+         html_body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="ignore")
+
+   # Fallback: convert HTML to plain if no plain part exists
+   if not plain_body and html_body:
+      soup = BeautifulSoup(html_body, "html.parser")
+      plain_body = soup.get_text()
+
+   return plain_body.strip() if plain_body else "", html_body.strip() if html_body else ""
+
+def get_attachments_from_email(msg):
+   attachments = []
+   for part in msg.walk():
+      content_disposition = part.get("Content-Disposition")
+      if content_disposition and "attachment" in content_disposition:
+         filename = part.get_filename()
+         file_data = part.get_payload(decode=True)  # Get raw file content (bytes)
+
+         if filename and file_data:
+               attachments.append({
+                  "filename": filename,
+                  "content": file_data,  # Binary data (store or process later)
+                  "size_bytes": len(file_data)
+               })
+
+   return attachments
+
+# Extract Mail Content
+def extract_mail_content(mail_id, creds):
+   try:
+      status, data = creds.fetch(mail_id, '(RFC822)')
+      raw = data[0][1]
+      return email.message_from_bytes(raw, policy=policy.default)
+
+   except Exception as e:
+      print(f"Error fetching mail from gmail: {e}")
+
+async def assign_mail_to_project(conn, mail_ids: list[int]):
+   try:
+      project_id = await get_project_id(conn, 'DesignCore Studio', 'Manish', 'Choksi')
+      query = """ 
+      INSERT INTO public.project_receive_mails_projects ("projectsId", "mailReceiveId") VALUES ($1, $2)
+      ON CONFLICT DO NOTHING;
+      """
+      async with conn.transaction():
+            for mail_id in mail_ids:
+               await conn.execute(query, project_id, mail_id)
+
+   except Exception as e:
+      print(f"Error while assigning mail to project: {e}")
+
+async def get_project_id(conn, project_name: str, first_name: str, last_name: str) -> int:
+   try:
+      query = """
+      SELECT p.id FROM public.projects p 
+      JOIN public.project_client_details c
+      ON p."projectClientId" = c.id
+      WHERE p.project_name = $1 AND c.first_name = $2 AND c.last_name = $3
+      """
+      project_id = await conn.fetchval(query, project_name, first_name, last_name)
+      return project_id
+   except Exception as e:
+      print(f"Error while getting project id: {e}")
+
+async def reset_primary_key(conn, table):
+   try:
+      seq_row = await conn.fetchrow(f"SELECT pg_get_serial_sequence('public.\"{table}\"', 'id') AS seq;")
+      seq_name = seq_row["seq"]
+      max_row = await conn.fetchrow(f'SELECT COALESCE(MAX(id), 0) AS max_id FROM public."{table}";')
+      max_id = max_row["max_id"]
+      await conn.execute(f"ALTER SEQUENCE {seq_name} RESTART WITH {max_id + 1};")
+   except Exception as e:
+      print(f"Error while resetting primary key: {e}")

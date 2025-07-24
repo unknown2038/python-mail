@@ -1,35 +1,39 @@
 import asyncio
-import email
-from email import policy
 import imaplib
 from database.db import get_db_connection
-from src.methods.receive_mail_helper import mail_object
+from src.methods.receive_mails.receive_mail_file_manager import save_mail_attachments
+from src.methods.receive_mails.receive_mail_helper import assign_mail_to_project, extract_mail_content, mail_object, reset_primary_key
 from src.methods.employee_methods import fetch_employee_by_id
 from src.methods.google_auth import get_google_access_token
 import datetime
 
 
-
-def fetch_receive_mails(user_id, mail_id_name):
-   conn = get_db_connection()
+async def fetch_receive_mails(user_id, mail_id_name, date_filter):
+   conn = await get_db_connection()
    if not conn:
       return []
    
    try:
-      cur = conn.cursor()
-      employee = fetch_employee_by_id(user_id)
-      return employee
-   #   cur.execute(
-   #       "SELECT * FROM receive_mails WHERE user_id = %s AND mail_id_name = %s",
-   #       (user_id, mail_id_name),
-   #   )
-   #   rows = cur.fetchall()
-   #   return rows
+      start_dt = date_filter.replace(hour=0, minute=0, second=0, microsecond=0)
+      end_dt = date_filter.replace(hour=23, minute=59, second=59, microsecond=999000)
+      
+      employee = await fetch_employee_by_id(user_id)
+      if employee['role'] == 'Admin':
+         mails = await conn.fetch("""
+            SELECT id, from_id, to_ids, cc_ids, bcc_ids, subject, receive_date, attachments, status, is_self_sent_mail 
+            FROM public.mail_receive
+            where mail_id_name = $1 AND receive_date BETWEEN $2 AND $3
+            ORDER BY receive_date DESC
+            """,mail_id_name, start_dt, end_dt)
+         return [dict(r) for r in mails]
+      else:
+         return []
+      
    except Exception as e:
-      print(f"Error fetching employees: {e}")
+      print(f"Error fetching receive mails: {e}")
       return []
    finally:
-      conn.close()
+      await conn.close()
 
 async def fetch_mail_creds():
    conn =await get_db_connection()
@@ -95,16 +99,6 @@ async def fetch_mail_from_gmail(username, client_id, client_secret, refresh_toke
    mails = await asyncio.to_thread(run_fetch)
    return mails
 
-# Extract Mail Content
-def extract_mail_content(mail_id, creds):
-   try:
-      status, data = creds.fetch(mail_id, '(RFC822)')
-      raw = data[0][1]
-      return email.message_from_bytes(raw, policy=policy.default)
-
-   except Exception as e:
-      print(f"Error fetching mail from gmail: {e}")
-
 async def save_mails(mails, username, name):
    conn = await get_db_connection()
    if not conn:
@@ -157,26 +151,26 @@ async def inset_mail_in_db(conn,mail_objects):
       query = """ 
       INSERT INTO public.mail_receive
       (mail_id, mail_id_name, is_self_sent_mail, from_id, to_ids, cc_ids, bcc_ids, subject, message_id, html, body, receive_date, attachments, in_reply_to, "references")
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id;
       """
-      values = [
-         (mail_obj["mail_id"], mail_obj["mail_id_name"], mail_obj["is_self_sent_mail"], mail_obj["from_id"], mail_obj["to_ids"], mail_obj["cc_ids"], mail_obj["bcc_ids"], 
-         mail_obj["subject"], mail_obj["message_id"], mail_obj["html"], mail_obj["body"], mail_obj["receive_date"], mail_obj["attachments"], mail_obj["in_reply_to"], mail_obj["references"])
-         for mail_obj in mail_objects
-      ]
       
+      inserted_ids = []
       async with conn.transaction(): 
-         await conn.executemany(query, values)
-         print(f"Mail inserted in db: {len(mail_objects)} of {mail_objects[0]['mail_id_name']}")
+         for mail_obj in mail_objects:
+               row = await conn.fetchrow(
+                  query,
+                  mail_obj["mail_id"], mail_obj["mail_id_name"], mail_obj["is_self_sent_mail"],
+                  mail_obj["from_id"], mail_obj["to_ids"], mail_obj["cc_ids"], mail_obj["bcc_ids"],
+                  mail_obj["subject"], mail_obj["message_id"], mail_obj["html"], mail_obj["body"],
+                  mail_obj["receive_date"], mail_obj["attachments"], mail_obj["in_reply_to"], mail_obj["references"]
+               )
+               inserted_ids.append(row["id"])
+         
+         # Process attachments and assign projects
+         await save_mail_attachments(mail_objects)
+         await assign_mail_to_project(conn,inserted_ids)
+         print(f"Mail inserted in db: {len(mail_objects)}")
    except Exception as e:
       print(f"Error while inserting mail in db: {e}")
 
-async def reset_primary_key(conn, table):
-   try:
-      seq_row = await conn.fetchrow(f"SELECT pg_get_serial_sequence('public.\"{table}\"', 'id') AS seq;")
-      seq_name = seq_row["seq"]
-      max_row = await conn.fetchrow(f'SELECT COALESCE(MAX(id), 0) AS max_id FROM public."{table}";')
-      max_id = max_row["max_id"]
-      await conn.execute(f"ALTER SEQUENCE {seq_name} RESTART WITH {max_id + 1};")
-   except Exception as e:
-      print(f"Error while resetting primary key: {e}")
+
