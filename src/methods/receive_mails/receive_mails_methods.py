@@ -8,7 +8,12 @@ from src.methods.google_auth import get_google_access_token
 import datetime
 
 
-async def fetch_receive_mails(user_id, mail_id_name, date_filter):
+async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent):
+   # Ensure boolean
+   if isinstance(is_self_sent, str):
+      is_self_sent = is_self_sent.lower() in ("true", "1", "yes")
+   elif not isinstance(is_self_sent, bool):
+      is_self_sent = bool(is_self_sent)
    conn = await get_db_connection()
    if not conn:
       return []
@@ -18,17 +23,54 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter):
       end_dt = date_filter.replace(hour=23, minute=59, second=59, microsecond=999000)
       
       employee = await fetch_employee_by_id(user_id)
-      if employee['role'] == 'Admin':
+      if employee['department'] == 'department' or employee['department'] == 'MDO' or employee['department'] == 'Management':
          mails = await conn.fetch("""
             SELECT id, from_id, to_ids, cc_ids, bcc_ids, subject, receive_date, attachments, status, is_self_sent_mail 
             FROM public.mail_receive
-            where mail_id_name = $1 AND receive_date BETWEEN $2 AND $3
+            where mail_id_name = $1 
+               AND is_self_sent_mail = $2 
+               AND receive_date BETWEEN $3 AND $4
             ORDER BY receive_date DESC
-            """,mail_id_name, start_dt, end_dt)
+            """,mail_id_name, is_self_sent, start_dt, end_dt)
          return [dict(r) for r in mails]
-      else:
-         return []
-      
+      elif employee['role'] == 'HOD':
+         mails = await conn.fetch("""
+            SELECT mr.id, mr.from_id, mr.to_ids, mr.cc_ids, mr.bcc_ids, mr.subject, mr.receive_date, mr.attachments, mr.status, mr.is_self_sent_mail
+            FROM public.mail_receive mr
+            JOIN public.project_receive_mails_projects prmp
+               ON prmp."mailReceiveId" = mr.id
+            JOIN public.projects p
+               ON p.id = prmp."projectsId"
+            JOIN public.projects_poc_employees ppe
+               ON ppe."projectsId" = p.id
+            WHERE ppe."employeesId" = $5
+               AND mr.mail_id_name = $1
+               AND mr.is_self_sent_mail = $2
+               AND mr.receive_date BETWEEN $3 AND $4
+            ORDER BY mr.receive_date DESC;
+            """,mail_id_name, is_self_sent, start_dt, end_dt, user_id)
+         return [dict(r) for r in mails]
+      elif any(key in employee['role'] for key in ['Jr.','Sr.']):
+         mails = await conn.fetch("""
+            SELECT mr.id, mr.from_id, mr.to_ids, mr.cc_ids, mr.bcc_ids, mr.subject, mr.receive_date, mr.attachments, mr.status, mr.is_self_sent_mail
+            FROM public.mail_receive mr
+            JOIN public.project_receive_mails_projects prmp
+               ON prmp."mailReceiveId" = mr.id
+            JOIN public.projects p
+               ON p.id = prmp."projectsId"
+            WHERE mr.mail_id_name = $1
+               AND mr.is_self_sent_mail = $2
+               AND mr.receive_date BETWEEN $3 AND $4
+               AND (
+                  EXISTS (SELECT 1 FROM public.projects_designers_employees die WHERE die."projectsId" = p.id AND die."employeesId" = $5)
+               OR EXISTS (SELECT 1 FROM public.projects_detailers_employees dte WHERE dte."projectsId" = p.id AND dte."employeesId" = $5)
+               OR EXISTS (SELECT 1 FROM public.projects_3d_designers_employees tde WHERE tde."projectsId" = p.id AND tde."employeesId" = $5)
+               OR EXISTS (SELECT 1 FROM public.projects_site_poc_employees spe WHERE spe."projectsId" = p.id AND spe."employeesId" = $5)
+               OR EXISTS (SELECT 1 FROM public.projects_site_support_poc_employees sspe WHERE sspe."projectsId" = p.id AND sspe."employeesId" = $5)
+               )	
+            ORDER BY mr.receive_date DESC;
+            """,mail_id_name, is_self_sent, start_dt, end_dt, user_id)
+         return [dict(r) for r in mails]
    except Exception as e:
       print(f"Error fetching receive mails: {e}")
       return []

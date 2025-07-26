@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 import email
 from email import policy
 
+from database.db import get_db_connection
+
 def convert_email_date_to_ist(date_header_value):
    try:
       if not date_header_value:
@@ -110,16 +112,27 @@ def extract_mail_content(mail_id, creds):
    except Exception as e:
       print(f"Error fetching mail from gmail: {e}")
 
-async def assign_mail_to_project(conn, mail_ids: list[int]):
+async def assign_mail_to_project(conn,mail_ids: list[int], project_ids: list[int] = [0]):
    try:
-      project_id = await get_project_id(conn, 'DesignCore Studio', 'Manish', 'Choksi')
+      p_ids = project_ids
+      if 0 in p_ids:
+         p_ids = [await get_project_id(conn, 'DesignCore Studio', 'Manish', 'Choksi')]
+
+      # Remove existing mail from project
+      remove_query = """ DELETE FROM public.project_receive_mails_projects WHERE "mailReceiveId" = $1 """
+      async with conn.transaction():
+         for mail_id in mail_ids:
+               await conn.execute(remove_query, mail_id)
+      
+      # Assign mail to project
       query = """ 
       INSERT INTO public.project_receive_mails_projects ("projectsId", "mailReceiveId") VALUES ($1, $2)
       ON CONFLICT DO NOTHING;
       """
       async with conn.transaction():
             for mail_id in mail_ids:
-               await conn.execute(query, project_id, mail_id)
+               for p_id in p_ids:
+                  await conn.execute(query, p_id, mail_id)
 
    except Exception as e:
       print(f"Error while assigning mail to project: {e}")
@@ -146,3 +159,17 @@ async def reset_primary_key(conn, table):
       await conn.execute(f"ALTER SEQUENCE {seq_name} RESTART WITH {max_id + 1};")
    except Exception as e:
       print(f"Error while resetting primary key: {e}")
+
+async def assign_mails_to_project(project_ids: list[int], mail_ids: list[int]) -> bool:
+   conn = await get_db_connection()
+   try:
+      if not conn:
+         return False
+      await assign_mail_to_project(conn, mail_ids, project_ids)
+      return True
+   except Exception as e:
+      print(f"Error while assigning mails to project: {e}")
+      return False
+   finally:
+      await conn.close()
+
