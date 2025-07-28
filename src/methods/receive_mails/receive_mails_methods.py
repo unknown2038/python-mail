@@ -2,13 +2,13 @@ import asyncio
 import imaplib
 from database.db import get_db_connection
 from src.methods.receive_mails.receive_mail_file_manager import save_mail_attachments
-from src.methods.receive_mails.receive_mail_helper import assign_mail_to_project, extract_mail_content, mail_object, reset_primary_key
+from src.methods.receive_mails.receive_mail_helper import assign_mail_to_project, extract_mail_content, generate_light_color, mail_object, reset_primary_key
 from src.methods.employee_methods import fetch_employee_by_id
 from src.methods.google_auth import get_google_access_token
 import datetime
 
 
-async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent):
+async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, mail_of):
    # Ensure boolean
    if isinstance(is_self_sent, str):
       is_self_sent = is_self_sent.lower() in ("true", "1", "yes")
@@ -77,7 +77,7 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent):
    finally:
       await conn.close()
 
-async def fetch_mail_creds():
+async def fetch_gmail_mails():
    conn =await get_db_connection()
    if not conn:
       print("No connection to the database")
@@ -215,4 +215,25 @@ async def inset_mail_in_db(conn,mail_objects):
    except Exception as e:
       print(f"Error while inserting mail in db: {e}")
 
+async def fetch_mail_creds():
+   conn = await get_db_connection()
+   if not conn:
+      print("No connection to the database")
+      return None
+   try:
+      rows = await conn.fetch(""" SELECT username, name FROM public.mail_credentials WHERE is_active = $1; """,True)  
+      if not rows: 
+         return []
+      else:
+         result = []
+         for row in rows:
+            color = generate_light_color()
+            row_dict = dict(row)
+            row_dict['color'] = color
+            result.append(row_dict)
+         return result
+   except Exception as e:
+      print(f"Error while fetching mail creds: {e}")
+   finally:
+      await conn.close()
 

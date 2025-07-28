@@ -173,3 +173,11 @@ async def assign_mails_to_project(project_ids: list[int], mail_ids: list[int]) -
    finally:
       await conn.close()
 
+import random
+
+def generate_light_color() -> str:
+   # Generate a random light color (RGB values 180-255 so it stays bright)
+   r = random.randint(150, 255)
+   g = random.randint(150, 225)
+   b = random.randint(150, 255)
+   return f"#{r:02X}{g:02X}{b:02X}"
