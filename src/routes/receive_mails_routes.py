@@ -1,9 +1,16 @@
+import re
 from flask import Blueprint, request, jsonify
-from src.methods.receive_mails.receive_mail_helper import assign_mails_to_project
+from src.methods.receive_mails.receive_mail_helper import (
+    assign_mails_to_project,
+    modify_receive_mails,
+)
 from src.methods.receive_mails.receive_mails_methods import (
     fetch_mail_creds,
     fetch_gmail_mails,
     fetch_receive_mails,
+    move_to_trash,
+    remove_from_trash,
+    search_any_mail,
 )
 from datetime import datetime
 
@@ -22,11 +29,13 @@ async def get_receive_mails():
 
         if date_str:
             date_filter = datetime.strptime(date_str, "%Y-%m-%d")
-            receive_mails = await fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent)
-            return jsonify(receive_mails), 200
-
-        # await fetch_gmail_mails()
-        # return jsonify({"message": "Mails fetched successfully"}), 200
+            receive_mails = await fetch_receive_mails(
+                user_id, mail_id_name, date_filter, is_self_sent, mail_of
+            )
+            result = modify_receive_mails(receive_mails)
+            return jsonify(result), 200
+        else:
+            return jsonify({"error": "No date provided"}), 400
     except Exception as e:
         print(f"Error fetching receive mails: {e}")
         return jsonify({"error": e}), 400
@@ -69,4 +78,68 @@ async def assign_project_to_mails():
         return jsonify({"error": str(e)}), 500
 
 
-# await fetch_gmail_mails()
+@receive_mail_bp.route("/receive/import-mails-from-gmail", methods=["POST"])
+async def import_mails_from_gmail():
+    try:
+        # Parse JSON body
+        data = request.get_json()  # Flask async support
+        date_str = data.get("date")  # Expecting format: YYYY-MM-DD
+        if date_str:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            date_filter = date_obj.strftime("%d-%b-%Y")
+            await fetch_gmail_mails(date_filter)
+            return jsonify({"message": "Mails imported successfully"}), 200
+        else:
+            return jsonify({"error": "Failed to import mails"}), 500
+    except Exception as e:
+        print(f"Error importing mails: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@receive_mail_bp.route("/receive/search-mail", methods=["GET"])
+async def search_mail():
+    try:
+        search_query = request.args.get("search_query")
+        user_id = request.args.get("user_id", type=int)
+        mail_id_name = request.args.get("mail_id_name")
+
+        receive_mails = await search_any_mail(search_query, user_id, mail_id_name)
+        result = modify_receive_mails(receive_mails)
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"Error searching mail: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@receive_mail_bp.route("/receive/move-to-trash-mails", methods=["POST"])
+async def move_to_trash_mails():
+    try:
+        data = request.get_json()  # Flask async support
+        mail_ids = data.get("mail_ids")
+        # Validate inputs
+        if not isinstance(mail_ids, list) or not all(
+            isinstance(i, int) for i in mail_ids
+        ):
+            return jsonify({"error": "mail_ids must be a list of integers"}), 400
+        
+        await move_to_trash(mail_ids)
+        return jsonify({"message": "Mails moved to trash successfully"}), 200
+    except Exception as e:
+        print(f"Error moving mails to trash: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@receive_mail_bp.route("/receive/remove-from-trash-mails", methods=["POST"])
+async def remove_from_trash_mails():
+    try:
+        data = request.get_json()  # Flask async support
+        mail_ids = data.get("mail_ids")
+        # Validate inputs
+        if not isinstance(mail_ids, list) or not all(
+            isinstance(i, int) for i in mail_ids
+        ):
+            return jsonify({"error": "mail_ids must be a list of integers"}), 400
+        
+        await remove_from_trash(mail_ids)
+        return jsonify({"message": "Mails moved to trash successfully"}), 200
+    except Exception as e:
+        print(f"Error moving mails to trash: {e}")
+        return jsonify({"error": str(e)}), 500

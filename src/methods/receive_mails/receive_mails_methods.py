@@ -1,5 +1,6 @@
 import asyncio
 import imaplib
+from flask import jsonify
 from database.db import get_db_connection
 from src.methods.receive_mails.receive_mail_file_manager import save_mail_attachments
 from src.methods.receive_mails.receive_mail_helper import assign_mail_to_project, extract_mail_content, generate_light_color, mail_object, reset_primary_key
@@ -21,63 +22,81 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
    try:
       start_dt = date_filter.replace(hour=0, minute=0, second=0, microsecond=0)
       end_dt = date_filter.replace(hour=23, minute=59, second=59, microsecond=999000)
-      
       employee = await fetch_employee_by_id(user_id)
-      if employee['department'] == 'department' or employee['department'] == 'MDO' or employee['department'] == 'Management':
+      
+      if mail_of == 'Approval':
+         # add approval mail logic
+         return []
+      elif mail_of == 'Trash':
+         # add trash mail logic
          mails = await conn.fetch("""
-            SELECT id, from_id, to_ids, cc_ids, bcc_ids, subject, receive_date, attachments, status, is_self_sent_mail 
-            FROM public.mail_receive
-            where mail_id_name = $1 
-               AND is_self_sent_mail = $2 
-               AND receive_date BETWEEN $3 AND $4
-            ORDER BY receive_date DESC
-            """,mail_id_name, is_self_sent, start_dt, end_dt)
+               SELECT id, from_id, subject, receive_date, body
+               FROM public.mail_receive
+               where mail_id_name = $1 
+                  AND is_removed = $2 
+                  AND receive_date BETWEEN $3 AND $4
+               ORDER BY receive_date DESC
+               """,mail_id_name, True, start_dt, end_dt)
          return [dict(r) for r in mails]
-      elif employee['role'] == 'HOD':
-         mails = await conn.fetch("""
-            SELECT mr.id, mr.from_id, mr.to_ids, mr.cc_ids, mr.bcc_ids, mr.subject, mr.receive_date, mr.attachments, mr.status, mr.is_self_sent_mail
-            FROM public.mail_receive mr
-            JOIN public.project_receive_mails_projects prmp
-               ON prmp."mailReceiveId" = mr.id
-            JOIN public.projects p
-               ON p.id = prmp."projectsId"
-            JOIN public.projects_poc_employees ppe
-               ON ppe."projectsId" = p.id
-            WHERE ppe."employeesId" = $5
-               AND mr.mail_id_name = $1
-               AND mr.is_self_sent_mail = $2
-               AND mr.receive_date BETWEEN $3 AND $4
-            ORDER BY mr.receive_date DESC;
-            """,mail_id_name, is_self_sent, start_dt, end_dt, user_id)
-         return [dict(r) for r in mails]
-      elif any(key in employee['role'] for key in ['Jr.','Sr.']):
-         mails = await conn.fetch("""
-            SELECT mr.id, mr.from_id, mr.to_ids, mr.cc_ids, mr.bcc_ids, mr.subject, mr.receive_date, mr.attachments, mr.status, mr.is_self_sent_mail
-            FROM public.mail_receive mr
-            JOIN public.project_receive_mails_projects prmp
-               ON prmp."mailReceiveId" = mr.id
-            JOIN public.projects p
-               ON p.id = prmp."projectsId"
-            WHERE mr.mail_id_name = $1
-               AND mr.is_self_sent_mail = $2
-               AND mr.receive_date BETWEEN $3 AND $4
-               AND (
-                  EXISTS (SELECT 1 FROM public.projects_designers_employees die WHERE die."projectsId" = p.id AND die."employeesId" = $5)
-               OR EXISTS (SELECT 1 FROM public.projects_detailers_employees dte WHERE dte."projectsId" = p.id AND dte."employeesId" = $5)
-               OR EXISTS (SELECT 1 FROM public.projects_3d_designers_employees tde WHERE tde."projectsId" = p.id AND tde."employeesId" = $5)
-               OR EXISTS (SELECT 1 FROM public.projects_site_poc_employees spe WHERE spe."projectsId" = p.id AND spe."employeesId" = $5)
-               OR EXISTS (SELECT 1 FROM public.projects_site_support_poc_employees sspe WHERE sspe."projectsId" = p.id AND sspe."employeesId" = $5)
-               )	
-            ORDER BY mr.receive_date DESC;
-            """,mail_id_name, is_self_sent, start_dt, end_dt, user_id)
-         return [dict(r) for r in mails]
+      else:
+         if employee['role'] == 'Admin' or employee['department'] == 'MDO' or employee['department'] == 'Management':
+            mails = await conn.fetch("""
+               SELECT id, from_id, subject, receive_date, body
+               FROM public.mail_receive
+               where mail_id_name = $1 
+                  AND is_self_sent_mail = $2 
+                  AND is_removed = $5 
+                  AND receive_date BETWEEN $3 AND $4
+               ORDER BY receive_date DESC
+               """,mail_id_name, is_self_sent, start_dt, end_dt, False)
+            return [dict(r) for r in mails]
+         elif employee['role'] == 'HOD':
+            mails = await conn.fetch("""
+               SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
+               FROM public.mail_receive mr
+               JOIN public.project_receive_mails_projects prmp
+                  ON prmp."mailReceiveId" = mr.id
+               JOIN public.projects p
+                  ON p.id = prmp."projectsId"
+               JOIN public.projects_poc_employees ppe
+                  ON ppe."projectsId" = p.id
+               WHERE ppe."employeesId" = $5
+                  AND mr.mail_id_name = $1
+                  AND mr.is_self_sent_mail = $2
+                  AND mr.is_removed = $5
+                  AND mr.receive_date BETWEEN $3 AND $4
+               ORDER BY mr.receive_date DESC;
+               """,mail_id_name, is_self_sent, start_dt, end_dt, user_id, False)
+            return [dict(r) for r in mails]
+         elif any(key in employee['role'] for key in ['Jr.','Sr.','Intern']):
+            mails = await conn.fetch("""
+               SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
+               FROM public.mail_receive mr
+               JOIN public.project_receive_mails_projects prmp
+                  ON prmp."mailReceiveId" = mr.id
+               JOIN public.projects p
+                  ON p.id = prmp."projectsId"
+               WHERE mr.mail_id_name = $1
+                  AND mr.is_self_sent_mail = $2
+                  AND mr.is_removed = $6
+                  AND mr.receive_date BETWEEN $3 AND $4
+                  AND (
+                     EXISTS (SELECT 1 FROM public.projects_designers_employees die WHERE die."projectsId" = p.id AND die."employeesId" = $5)
+                  OR EXISTS (SELECT 1 FROM public.projects_detailers_employees dte WHERE dte."projectsId" = p.id AND dte."employeesId" = $5)
+                  OR EXISTS (SELECT 1 FROM public.projects_3d_designers_employees tde WHERE tde."projectsId" = p.id AND tde."employeesId" = $5)
+                  OR EXISTS (SELECT 1 FROM public.projects_site_poc_employees spe WHERE spe."projectsId" = p.id AND spe."employeesId" = $5)
+                  OR EXISTS (SELECT 1 FROM public.projects_site_support_poc_employees sspe WHERE sspe."projectsId" = p.id AND sspe."employeesId" = $5)
+                  )	
+               ORDER BY mr.receive_date DESC;
+               """,mail_id_name, is_self_sent, start_dt, end_dt, user_id, False)
+            return [dict(r) for r in mails]
    except Exception as e:
       print(f"Error fetching receive mails: {e}")
       return []
    finally:
       await conn.close()
 
-async def fetch_gmail_mails():
+async def fetch_gmail_mails(date_filter):
    conn =await get_db_connection()
    if not conn:
       print("No connection to the database")
@@ -90,7 +109,7 @@ async def fetch_gmail_mails():
    
       if rows:
          for row in rows:
-            mails = await fetch_mail_from_gmail(row[0], row[1], row[2], row[3])
+            mails = await fetch_mail_from_gmail(row[0], row[1], row[2], row[3], date_filter)
             await save_mails(mails, row[0], row[4])
 
    except Exception as e:
@@ -98,7 +117,7 @@ async def fetch_gmail_mails():
    finally:
       await conn.close()
 
-async def fetch_mail_from_gmail(username, client_id, client_secret, refresh_token):
+async def fetch_mail_from_gmail(username, client_id, client_secret, refresh_token, date_filter):
    if not username or not client_id or not client_secret or not refresh_token:
          return None
       
@@ -110,11 +129,10 @@ async def fetch_mail_from_gmail(username, client_id, client_secret, refresh_toke
          access_token = get_google_access_token(client_id, client_secret, refresh_token)
          auth_string = f"user={username}\x01auth=Bearer {access_token.token}\x01\x01"
          mail_creds.authenticate('XOAUTH2', lambda x: auth_string.encode('utf-8'))
-         date = (datetime.datetime.today() - datetime.timedelta(days=0)).strftime("%d-%b-%Y")
-         
+         # date = (datetime.datetime.today() - datetime.timedelta(days=0)).strftime("%d-%b-%Y")
          # INBOX unseen mails
          mail_creds.select("INBOX")
-         status, messages = mail_creds.search(None, f'(UNSEEN ON "{date}")') 
+         status, messages = mail_creds.search(None, f'(UNSEEN ON "{date_filter}")') 
          if status == 'OK':
             inbox_mails = messages[0].split()[::1]
             for mail_id in inbox_mails:
@@ -124,7 +142,7 @@ async def fetch_mail_from_gmail(username, client_id, client_secret, refresh_toke
          
          # SENT mails
          mail_creds.select('"[Gmail]/Sent Mail"')
-         status, messages = mail_creds.search(None, f'(ON "{date}")')
+         status, messages = mail_creds.search(None, f'(ON "{date_filter}")')
          if status == 'OK':
             sent_mails = messages[0].split()[::1]
             for mail_id in sent_mails:
@@ -237,3 +255,122 @@ async def fetch_mail_creds():
    finally:
       await conn.close()
 
+async def search_any_mail(search_query, user_id, mail_id_name):
+   conn = await get_db_connection()
+   if not conn:
+      print("No connection to the database")
+      return None
+   try:
+      employee = await fetch_employee_by_id(user_id)
+      if employee['role'] == 'Admin' or employee['department'] == 'MDO' or employee['department'] == 'Management':
+         mails = await conn.fetch("""
+            SELECT id, from_id, subject, receive_date, body
+            FROM public.mail_receive 
+            WHERE mail_id_name = $2
+               AND (
+                     from_id ILIKE '%' || $1::text || '%'
+                  OR array_to_string(to_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR array_to_string(cc_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR array_to_string(bcc_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR subject ILIKE '%' || $1::text || '%'
+                  OR from_id ILIKE '%' || $1::text || '%'
+               )
+            ORDER BY receive_date DESC;
+            """,search_query, mail_id_name)
+         return [dict(r) for r in mails]
+      elif employee['role'] == 'HOD':
+         mails = await conn.fetch("""
+            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
+            FROM public.mail_receive mr
+            JOIN public.project_receive_mails_projects prmp
+               ON prmp."mailReceiveId" = mr.id
+            JOIN public.projects p
+               ON p.id = prmp."projectsId"
+            JOIN public.projects_poc_employees ppe
+               ON ppe."projectsId" = p.id
+            WHERE ppe."employeesId" = $2
+               AND mr.mail_id_name = $3
+               AND (
+                     mr.from_id ILIKE '%' || $1::text || '%'
+                  OR array_to_string(mr.to_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR array_to_string(mr.cc_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR array_to_string(mr.bcc_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR mr.subject ILIKE '%' || $1::text || '%'
+                  OR mr.from_id ILIKE '%' || $1::text || '%'
+               )
+            ORDER BY mr.receive_date DESC;
+            """,search_query, user_id, mail_id_name)
+         return [dict(r) for r in mails]
+      elif any(key in employee['role'] for key in ['Jr.','Sr.','Intern']):
+         mails = await conn.fetch("""
+            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
+            FROM public.mail_receive mr
+            JOIN public.project_receive_mails_projects prmp
+               ON prmp."mailReceiveId" = mr.id
+            JOIN public.projects p
+               ON p.id = prmp."projectsId"
+            WHERE mr.mail_id_name = $2
+               AND (
+                  EXISTS (SELECT 1 FROM public.projects_designers_employees die WHERE die."projectsId" = p.id AND die."employeesId" = $3)
+                  OR EXISTS (SELECT 1 FROM public.projects_detailers_employees dte WHERE dte."projectsId" = p.id AND dte."employeesId" = $3)
+                  OR EXISTS (SELECT 1 FROM public.projects_3d_designers_employees tde WHERE tde."projectsId" = p.id AND tde."employeesId" = $3)
+                  OR EXISTS (SELECT 1 FROM public.projects_site_poc_employees spe WHERE spe."projectsId" = p.id AND spe."employeesId" = $3)
+                  OR EXISTS (SELECT 1 FROM public.projects_site_support_poc_employees sspe WHERE sspe."projectsId" = p.id AND sspe."employeesId" = $3)
+               )
+               AND (
+                  mr.from_id ILIKE '%' || $1::text || '%'
+                  OR array_to_string(mr.to_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR array_to_string(mr.cc_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR array_to_string(mr.bcc_ids, ',') ILIKE '%' || $1::text || '%'
+                  OR mr.subject ILIKE '%' || $1::text || '%'
+                  OR mr.from_id ILIKE '%' || $1::text || '%'
+               );
+            ORDER BY mr.receive_date DESC;
+            """,search_query, mail_id_name, user_id)
+      else:
+         return []
+   except Exception as e:
+      print(f"Error while searching mail: {e}")
+      return []
+   finally:
+      await conn.close()
+
+async def move_to_trash(mail_ids: list[int]):
+   conn = await get_db_connection()
+   if not conn:
+      print("No connection to the database")
+      return None
+   try:
+      query = """
+         UPDATE public.mail_receive
+         SET is_removed = TRUE
+         WHERE id = ANY($1);
+      """
+      # Execute the update and return updated IDs
+      updated_rows = await conn.execute(query, mail_ids)
+      return jsonify({"message": "Mails moved to trash successfully"}), 200
+   except Exception as e:
+      print(f"Error while moving mails to trash: {e}")
+      return jsonify({"error": str(e)}), 500
+   finally:
+      await conn.close()
+
+async def remove_from_trash(mail_ids: list[int]):
+   conn = await get_db_connection()
+   if not conn:
+      print("No connection to the database")
+      return None
+   try:
+      query = """
+         UPDATE public.mail_receive
+         SET is_removed = FALSE
+         WHERE id = ANY($1);
+      """
+      # Execute the update and return updated IDs
+      updated_rows = await conn.execute(query, mail_ids)
+      return jsonify({"message": "Mails moved to inbox successfully"}), 200
+   except Exception as e:
+      print(f"Error while moving mails to inbox: {e}")
+      return jsonify({"error": str(e)}), 500
+   finally:
+      await conn.close()

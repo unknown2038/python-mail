@@ -1,3 +1,5 @@
+from datetime import datetime
+import re
 import pytz
 import email.utils
 from bs4 import BeautifulSoup
@@ -181,3 +183,46 @@ def generate_light_color() -> str:
    g = random.randint(150, 225)
    b = random.randint(150, 255)
    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def format_date(date_value: datetime) -> str:
+   dt = datetime.strftime(date_value, "%Y-%m-%d")
+   current_date = datetime.strftime(datetime.now(), "%Y-%m-%d")
+   
+   if dt == current_date:
+      return date_value.strftime("%H:%M")
+   else:
+      return date_value.strftime("%Y-%m-%d %H:%M")
+
+
+def modify_receive_mails (mails: list[dict]) -> list[dict]:
+   try:
+      # Regex to capture "Name <email>" OR just "email"
+      pattern = re.compile(r"^(.*?)\s*<(.+?)>$|(.+)$", re.MULTILINE)
+      result = []
+      for item in mails:
+         raw = item["from_id"].strip()
+         match = pattern.match(raw)
+         if match:
+            if match.group(2):  # Case: "Name <email>"
+               name = match.group(1).strip()
+               email = match.group(2).strip()
+            else:  # Case: Only email
+               email = match.group(3).strip()
+               name = email.split("@")[0]  # Use local part as name
+
+            result.append(
+               {
+                  "id": item["id"],
+                  "name": " ".join(word.capitalize() for word in name.strip().split()),
+                  "from_id": email,
+                  "subject": item["subject"],
+                  "receive_date": format_date(item["receive_date"]),
+                  "preview": item["body"],
+               }
+            )
+      return result
+   except Exception as e:
+      print(f"Error while modifying receive mails: {e}")
+      return []
+   
