@@ -1,4 +1,5 @@
 HOST = "127.0.0.1"
+# HOST = "10.2.2.8"
 PORT = 5000
 DEBUG = True
 

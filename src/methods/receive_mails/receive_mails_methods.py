@@ -28,7 +28,6 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
          # add approval mail logic
          return []
       elif mail_of == 'Trash':
-         # add trash mail logic
          mails = await conn.fetch("""
                SELECT id, from_id, subject, receive_date, body
                FROM public.mail_receive
@@ -41,53 +40,98 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
       else:
          if employee['role'] == 'Admin' or employee['department'] == 'MDO' or employee['department'] == 'Management':
             mails = await conn.fetch("""
-               SELECT id, from_id, subject, receive_date, body
-               FROM public.mail_receive
-               where mail_id_name = $1 
-                  AND is_self_sent_mail = $2 
-                  AND is_removed = $5 
-                  AND receive_date BETWEEN $3 AND $4
-               ORDER BY receive_date DESC
+               SELECT *
+                  FROM (
+                  SELECT DISTINCT ON (mr.id) 
+                     mr.id, 
+                     mr.from_id, 
+                     mr.subject, 
+                     mr.receive_date, 
+                     mr.body, 
+                     p.project_name, 
+                     pc.first_name, 
+                     pc.last_name
+                  FROM public.mail_receive mr
+                  LEFT JOIN public.mail_receive_project_mails_projects prmp
+                     ON prmp."mailReceiveId" = mr.id
+                  LEFT JOIN public.projects p
+                     ON p.id = prmp."projectsId"
+                  LEFT JOIN public.project_client_details pc
+                     ON pc.id = p."projectClientId"
+                  WHERE mr.mail_id_name = $1 
+                     AND mr.is_self_sent_mail = $2 
+                     AND mr.is_removed = $5 
+                     AND mr.receive_date BETWEEN $3 AND $4
+                  ORDER BY mr.id, mr.receive_date DESC
+                  ) sub
+                  ORDER BY sub.receive_date DESC;
                """,mail_id_name, is_self_sent, start_dt, end_dt, False)
             return [dict(r) for r in mails]
          elif employee['role'] == 'HOD':
             mails = await conn.fetch("""
-               SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
-               FROM public.mail_receive mr
-               JOIN public.project_receive_mails_projects prmp
-                  ON prmp."mailReceiveId" = mr.id
-               JOIN public.projects p
-                  ON p.id = prmp."projectsId"
-               JOIN public.projects_poc_employees ppe
-                  ON ppe."projectsId" = p.id
-               WHERE ppe."employeesId" = $5
-                  AND mr.mail_id_name = $1
-                  AND mr.is_self_sent_mail = $2
-                  AND mr.is_removed = $5
-                  AND mr.receive_date BETWEEN $3 AND $4
-               ORDER BY mr.receive_date DESC;
+               SELECT *
+                  FROM (
+                  SELECT DISTINCT ON (mr.id)
+                           mr.id,
+                           mr.from_id,
+                           mr.subject,
+                           mr.receive_date,
+                           mr.body
+                  FROM public.mail_receive mr
+                  LEFT JOIN public.mail_receive_project_mails_projects prmp
+                     ON prmp."mailReceiveId" = mr.id
+                  LEFT JOIN public.projects p
+                     ON p.id = prmp."projectsId"
+                  LEFT JOIN public.projects_poc_employees ppe
+                     ON ppe."projectsId" = p.id
+                  WHERE mr.mail_id_name = $1
+                     AND mr.is_self_sent_mail = $2
+                     AND mr.is_removed = $6
+                     AND mr.receive_date BETWEEN $3 AND $4
+                     AND (
+                           ppe."employeesId" = $5
+                           OR p.id = 186
+                     )
+                  ORDER BY mr.id, mr.receive_date DESC
+                  ) sub
+                  ORDER BY sub.receive_date DESC;
                """,mail_id_name, is_self_sent, start_dt, end_dt, user_id, False)
             return [dict(r) for r in mails]
          elif any(key in employee['role'] for key in ['Jr.','Sr.','Intern']):
             mails = await conn.fetch("""
-               SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
-               FROM public.mail_receive mr
-               JOIN public.project_receive_mails_projects prmp
-                  ON prmp."mailReceiveId" = mr.id
-               JOIN public.projects p
-                  ON p.id = prmp."projectsId"
-               WHERE mr.mail_id_name = $1
-                  AND mr.is_self_sent_mail = $2
-                  AND mr.is_removed = $6
-                  AND mr.receive_date BETWEEN $3 AND $4
-                  AND (
-                     EXISTS (SELECT 1 FROM public.projects_designers_employees die WHERE die."projectsId" = p.id AND die."employeesId" = $5)
-                  OR EXISTS (SELECT 1 FROM public.projects_detailers_employees dte WHERE dte."projectsId" = p.id AND dte."employeesId" = $5)
-                  OR EXISTS (SELECT 1 FROM public.projects_3d_designers_employees tde WHERE tde."projectsId" = p.id AND tde."employeesId" = $5)
-                  OR EXISTS (SELECT 1 FROM public.projects_site_poc_employees spe WHERE spe."projectsId" = p.id AND spe."employeesId" = $5)
-                  OR EXISTS (SELECT 1 FROM public.projects_site_support_poc_employees sspe WHERE sspe."projectsId" = p.id AND sspe."employeesId" = $5)
-                  )	
-               ORDER BY mr.receive_date DESC;
+               SELECT *
+                  FROM (
+                  SELECT DISTINCT ON (mr.id) 
+                     mr.id, 
+                     mr.from_id, 
+                     mr.subject, 
+                     mr.receive_date, 
+                     mr.body
+                  FROM public.mail_receive mr
+                  LEFT JOIN public.mail_receive_project_mails_projects prmp
+                     ON prmp."mailReceiveId" = mr.id
+                  LEFT JOIN public.projects p
+                     ON p.id = prmp."projectsId"
+                  WHERE mr.mail_id_name = $1
+                     AND mr.is_self_sent_mail = $2
+                     AND mr.is_removed = $6
+                     AND mr.receive_date BETWEEN $3 AND $4
+                     AND (
+                           EXISTS (SELECT 1 FROM public.projects_designers_employees die 
+                                 WHERE die."projectsId" = p.id AND die."employeesId" = $5)
+                        OR EXISTS (SELECT 1 FROM public.projects_detailers_employees dte 
+                                 WHERE dte."projectsId" = p.id AND dte."employeesId" = $5)
+                        OR EXISTS (SELECT 1 FROM public.projects_3d_designers_employees tde 
+                                 WHERE tde."projectsId" = p.id AND tde."employeesId" = $5)
+                        OR EXISTS (SELECT 1 FROM public.projects_site_poc_employees spe 
+                                 WHERE spe."projectsId" = p.id AND spe."employeesId" = $5)
+                        OR EXISTS (SELECT 1 FROM public.projects_site_support_poc_employees sspe 
+                                 WHERE sspe."projectsId" = p.id AND sspe."employeesId" = $5)
+                        OR p.id = 186
+                     )
+                  ORDER BY mr.id, mr.receive_date DESC
+                  ) sub
+                  ORDER BY sub.receive_date DESC;
                """,mail_id_name, is_self_sent, start_dt, end_dt, user_id, False)
             return [dict(r) for r in mails]
    except Exception as e:
@@ -282,7 +326,7 @@ async def search_any_mail(search_query, user_id, mail_id_name):
          mails = await conn.fetch("""
             SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
             FROM public.mail_receive mr
-            JOIN public.project_receive_mails_projects prmp
+            JOIN public.mail_receive_project_mails_projects prmp
                ON prmp."mailReceiveId" = mr.id
             JOIN public.projects p
                ON p.id = prmp."projectsId"
@@ -305,7 +349,7 @@ async def search_any_mail(search_query, user_id, mail_id_name):
          mails = await conn.fetch("""
             SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
             FROM public.mail_receive mr
-            JOIN public.project_receive_mails_projects prmp
+            JOIN public.mail_receive_project_mails_projects prmp
                ON prmp."mailReceiveId" = mr.id
             JOIN public.projects p
                ON p.id = prmp."projectsId"

@@ -119,22 +119,21 @@ async def assign_mail_to_project(conn,mail_ids: list[int], project_ids: list[int
       p_ids = project_ids
       if 0 in p_ids:
          p_ids = [await get_project_id(conn, 'DesignCore Studio', 'Manish', 'Choksi')]
-
       # Remove existing mail from project
-      remove_query = """ DELETE FROM public.project_receive_mails_projects WHERE "mailReceiveId" = $1 """
+      remove_query = """ DELETE FROM public.mail_receive_project_mails_projects WHERE "mailReceiveId" = $1 """
       async with conn.transaction():
          for mail_id in mail_ids:
                await conn.execute(remove_query, mail_id)
       
       # Assign mail to project
       query = """ 
-      INSERT INTO public.project_receive_mails_projects ("projectsId", "mailReceiveId") VALUES ($1, $2)
+      INSERT INTO public.mail_receive_project_mails_projects ("mailReceiveId", "projectsId") VALUES ($1, $2)
       ON CONFLICT DO NOTHING;
       """
       async with conn.transaction():
             for mail_id in mail_ids:
                for p_id in p_ids:
-                  await conn.execute(query, p_id, mail_id)
+                  await conn.execute(query,mail_id,p_id)
 
    except Exception as e:
       print(f"Error while assigning mail to project: {e}")

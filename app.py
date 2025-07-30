@@ -6,15 +6,8 @@ from src.routes.receive_mails_routes import receive_mail_bp
 
 # Check if the database connection is successful
 conn = get_db_connection()
-if conn:
-    print("\033[92m" + "\n" + "*" * 40)
-    print("✅ DATABASE CONNECTION SUCCESSFUL ✅")
-    print("*" * 40 + "\n" + "\033[0m")
-    print("\033[94m[INFO] Connected to existing employees table.\033[0m")
-else:
-    print("\033[91m" + "\n" + "!" * 40)
-    print("❌ DATABASE CONNECTION FAILED ❌")
-    print("!" * 40 + "\n" + "\033[0m")
+if not conn:
+    print("DATABASE CONNECTION FAILED")
 
 # Initialize the Flask app and register the blueprints
 app = Flask(__name__)

@@ -26,7 +26,6 @@ async def get_receive_mails():
         is_self_sent = request.args.get("is_self_sent")
         mail_of = request.args.get("mail_of")
         date_str = request.args.get("date")  # Expecting format: YYYY-MM-DD
-
         if date_str:
             date_filter = datetime.strptime(date_str, "%Y-%m-%d")
             receive_mails = await fetch_receive_mails(
@@ -94,7 +93,6 @@ async def import_mails_from_gmail():
     except Exception as e:
         print(f"Error importing mails: {e}")
         return jsonify({"error": str(e)}), 500
-
 
 @receive_mail_bp.route("/receive/search-mail", methods=["GET"])
 async def search_mail():
