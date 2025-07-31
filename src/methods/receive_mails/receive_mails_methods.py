@@ -29,7 +29,7 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
          return []
       elif mail_of == 'Trash':
          mails = await conn.fetch("""
-               SELECT id, from_id, subject, receive_date, body
+               SELECT id, from_id, subject, receive_date, body, message_id
                FROM public.mail_receive
                where mail_id_name = $1 
                   AND is_removed = $2 
@@ -48,7 +48,9 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
                      mr.subject, 
                      mr.receive_date, 
                      mr.body, 
+                     mr.message_id, 
                      p.project_name, 
+                     p.id as project_id,
                      pc.first_name, 
                      pc.last_name
                   FROM public.mail_receive mr
@@ -76,6 +78,7 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
                            mr.from_id,
                            mr.subject,
                            mr.receive_date,
+                           mr.message_id,
                            mr.body
                   FROM public.mail_receive mr
                   LEFT JOIN public.mail_receive_project_mails_projects prmp
@@ -106,6 +109,7 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
                      mr.from_id, 
                      mr.subject, 
                      mr.receive_date, 
+                     mr.message_id,
                      mr.body
                   FROM public.mail_receive mr
                   LEFT JOIN public.mail_receive_project_mails_projects prmp
@@ -254,8 +258,8 @@ async def inset_mail_in_db(conn,mail_objects):
    try:
       query = """ 
       INSERT INTO public.mail_receive
-      (mail_id, mail_id_name, is_self_sent_mail, from_id, to_ids, cc_ids, bcc_ids, subject, message_id, html, body, receive_date, attachments, in_reply_to, "references")
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id;
+      (mail_id, mail_id_name, is_self_sent_mail, from_id, to_ids, cc_ids, bcc_ids, subject, message_id, html, body, receive_date, attachments, in_reply_to, "references", we_are_in)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id;
       """
       
       inserted_ids = []
@@ -266,7 +270,7 @@ async def inset_mail_in_db(conn,mail_objects):
                   mail_obj["mail_id"], mail_obj["mail_id_name"], mail_obj["is_self_sent_mail"],
                   mail_obj["from_id"], mail_obj["to_ids"], mail_obj["cc_ids"], mail_obj["bcc_ids"],
                   mail_obj["subject"], mail_obj["message_id"], mail_obj["html"], mail_obj["body"],
-                  mail_obj["receive_date"], mail_obj["attachments"], mail_obj["in_reply_to"], mail_obj["references"]
+                  mail_obj["receive_date"], mail_obj["attachments"], mail_obj["in_reply_to"], mail_obj["references"], mail_obj["we_are_in"]
                )
                inserted_ids.append(row["id"])
          
@@ -308,7 +312,7 @@ async def search_any_mail(search_query, user_id, mail_id_name):
       employee = await fetch_employee_by_id(user_id)
       if employee['role'] == 'Admin' or employee['department'] == 'MDO' or employee['department'] == 'Management':
          mails = await conn.fetch("""
-            SELECT id, from_id, subject, receive_date, body
+            SELECT id, from_id, subject, receive_date, body, message_id
             FROM public.mail_receive 
             WHERE mail_id_name = $2
                AND (
@@ -324,7 +328,7 @@ async def search_any_mail(search_query, user_id, mail_id_name):
          return [dict(r) for r in mails]
       elif employee['role'] == 'HOD':
          mails = await conn.fetch("""
-            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
+            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body, mr.message_id
             FROM public.mail_receive mr
             JOIN public.mail_receive_project_mails_projects prmp
                ON prmp."mailReceiveId" = mr.id
@@ -347,7 +351,7 @@ async def search_any_mail(search_query, user_id, mail_id_name):
          return [dict(r) for r in mails]
       elif any(key in employee['role'] for key in ['Jr.','Sr.','Intern']):
          mails = await conn.fetch("""
-            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body
+            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body, mr.message_id
             FROM public.mail_receive mr
             JOIN public.mail_receive_project_mails_projects prmp
                ON prmp."mailReceiveId" = mr.id
@@ -416,5 +420,26 @@ async def remove_from_trash(mail_ids: list[int]):
    except Exception as e:
       print(f"Error while moving mails to inbox: {e}")
       return jsonify({"error": str(e)}), 500
+   finally:
+      await conn.close()
+
+
+async def fetch_mail_details(message_id: str):
+   conn = await get_db_connection()
+   if not conn:
+      print("No connection to the database")
+      return None
+   try:
+      mail_details = await conn.fetch("""
+         SELECT * FROM public.mail_receive 
+         WHERE message_id  = $1
+            OR in_reply_to = $1
+            OR "references" = $1
+         ORDER BY receive_date ASC;
+         """,message_id )
+      return [dict(r) for r in mail_details]
+   except Exception as e:
+      print(f"Error while fetching mail details: {e}")
+      return None
    finally:
       await conn.close()

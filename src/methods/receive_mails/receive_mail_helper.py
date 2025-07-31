@@ -43,14 +43,29 @@ def mail_object(mail_content, is_sent, username, name):
          content_disposition = str(part.get("Content-Disposition") or "")
          if "attachment" in content_disposition.lower():
                attachment_count += 1
+      
+      to_ids = split_emails(mail_content.get('To'))
+      cc_ids = split_emails(mail_content.get('Cc'))
+      bcc_ids = split_emails(mail_content.get('Bcc'))
+      we_are_in = None
+      if username in to_ids:
+         we_are_in = 'to'
+      elif username in cc_ids:
+         we_are_in = 'cc'
+      elif username in bcc_ids:
+         we_are_in = 'bcc'
+      else:
+         we_are_in = None
+      
+      
       return {
          "mail_id": username,
          "mail_id_name": name,
          "is_self_sent_mail": is_sent,
          "from_id": mail_content.get('From') or None,
-         "to_ids": split_emails(mail_content.get('To')),
-         "cc_ids": split_emails(mail_content.get('Cc')),
-         "bcc_ids": split_emails(mail_content.get('Bcc')),
+         "to_ids": to_ids,
+         "cc_ids": cc_ids,
+         "bcc_ids": bcc_ids,
          "subject": mail_content.get('Subject') or 'No Subject',
          "html":html_content,
          "body": plain_content,
@@ -59,7 +74,8 @@ def mail_object(mail_content, is_sent, username, name):
          "in_reply_to": None if not mail_content.get('In-Reply-To') or mail_content.get('In-Reply-To').strip() in ("", "<>") else mail_content.get('In-Reply-To').strip(),
          "references": None if not mail_content.get('References') or mail_content.get('References').strip() in ("", "<>") else mail_content.get('References').strip(),
          "attachments": attachment_count,
-         "attachments_data": get_attachments_from_email(mail_content)
+         "attachments_data": get_attachments_from_email(mail_content),
+         "we_are_in": we_are_in
       }
    except Exception as e:
       print(f"Error while making mail object: {e}")
@@ -218,6 +234,11 @@ def modify_receive_mails (mails: list[dict]) -> list[dict]:
                   "subject": item["subject"],
                   "receive_date": format_date(item["receive_date"]),
                   "preview": item["body"],
+                  "message_id": item["message_id"],
+                  "project_name": item["project_name"] or None,
+                  "first_name": item["first_name"] or None,
+                  "last_name": item["last_name"] or None,
+                  "project_id": item["project_id"] or None
                }
             )
       return result

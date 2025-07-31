@@ -7,6 +7,7 @@ from src.methods.receive_mails.receive_mail_helper import (
 from src.methods.receive_mails.receive_mails_methods import (
     fetch_mail_creds,
     fetch_gmail_mails,
+    fetch_mail_details,
     fetch_receive_mails,
     move_to_trash,
     remove_from_trash,
@@ -141,3 +142,14 @@ async def remove_from_trash_mails():
     except Exception as e:
         print(f"Error moving mails to trash: {e}")
         return jsonify({"error": str(e)}), 500
+
+@receive_mail_bp.route("/receive/specific-mail-details", methods=["GET"])
+async def get_specific_mail_details():
+    try:
+        message_id = request.args.get("message_id")
+        mail_details = await fetch_mail_details(message_id)
+        return jsonify(mail_details), 200
+    except Exception as e:
+        print(f"Error fetching specific mail details: {e}")
+        return jsonify({"error": str(e)}), 500
+
