@@ -5,8 +5,8 @@ import email.utils
 from bs4 import BeautifulSoup
 import email
 from email import policy
-
-from database.db import get_db_connection
+import random
+from database.db_pool import  execute_one, executemany, fetch_all, fetch_one, fetch_val
 
 def convert_email_date_to_ist(date_header_value):
    try:
@@ -130,31 +130,31 @@ def extract_mail_content(mail_id, creds):
    except Exception as e:
       print(f"Error fetching mail from gmail: {e}")
 
-async def assign_mail_to_project(conn,mail_ids: list[int], project_ids: list[int] = [0]):
+async def assign_mail_to_project(mail_ids: list[int], project_ids: list[int] = [0]):
    try:
       p_ids = project_ids
       if 0 in p_ids:
-         p_ids = [await get_project_id(conn, 'DesignCore Studio', 'Manish', 'Choksi')]
+         p_ids = [await get_project_id('DesignCore Studio', 'Manish', 'Choksi')]
       # Remove existing mail from project
       remove_query = """ DELETE FROM public.mail_receive_project_mails_projects WHERE "mailReceiveId" = $1 """
-      async with conn.transaction():
-         for mail_id in mail_ids:
-               await conn.execute(remove_query, mail_id)
+      for mail_id in mail_ids:
+         await execute_one(remove_query, mail_id)
       
       # Assign mail to project
       query = """ 
       INSERT INTO public.mail_receive_project_mails_projects ("mailReceiveId", "projectsId") VALUES ($1, $2)
       ON CONFLICT DO NOTHING;
       """
-      async with conn.transaction():
-            for mail_id in mail_ids:
-               for p_id in p_ids:
-                  await conn.execute(query,mail_id,p_id)
-
+      
+      for mail_id in mail_ids:
+         for p_id in p_ids:
+            await execute_one(query, mail_id, p_id)
+            mail_query = """ UPDATE public.mail_receive SET status = $1 WHERE id = $2; """
+            await execute_one(mail_query, 'Assigned', mail_id)
    except Exception as e:
       print(f"Error while assigning mail to project: {e}")
 
-async def get_project_id(conn, project_name: str, first_name: str, last_name: str) -> int:
+async def get_project_id(project_name: str, first_name: str, last_name: str) -> int:
    try:
       query = """
       SELECT p.id FROM public.projects p 
@@ -162,35 +162,28 @@ async def get_project_id(conn, project_name: str, first_name: str, last_name: st
       ON p."projectClientId" = c.id
       WHERE p.project_name = $1 AND c.first_name = $2 AND c.last_name = $3
       """
-      project_id = await conn.fetchval(query, project_name, first_name, last_name)
+      project_id = await fetch_val(query, project_name, first_name, last_name)
       return project_id
    except Exception as e:
       print(f"Error while getting project id: {e}")
 
-async def reset_primary_key(conn, table):
+async def reset_primary_key(table):
    try:
-      seq_row = await conn.fetchrow(f"SELECT pg_get_serial_sequence('public.\"{table}\"', 'id') AS seq;")
+      seq_row = await fetch_one(f"SELECT pg_get_serial_sequence('public.\"{table}\"', 'id') AS seq;")
       seq_name = seq_row["seq"]
-      max_row = await conn.fetchrow(f'SELECT COALESCE(MAX(id), 0) AS max_id FROM public."{table}";')
+      max_row = await fetch_one(f'SELECT COALESCE(MAX(id), 0) AS max_id FROM public."{table}";')
       max_id = max_row["max_id"]
-      await conn.execute(f"ALTER SEQUENCE {seq_name} RESTART WITH {max_id + 1};")
+      await execute_one(f"ALTER SEQUENCE {seq_name} RESTART WITH {max_id + 1};")
    except Exception as e:
       print(f"Error while resetting primary key: {e}")
 
 async def assign_mails_to_project(project_ids: list[int], mail_ids: list[int]) -> bool:
-   conn = await get_db_connection()
    try:
-      if not conn:
-         return False
-      await assign_mail_to_project(conn, mail_ids, project_ids)
+      await assign_mail_to_project(mail_ids, project_ids)
       return True
    except Exception as e:
       print(f"Error while assigning mails to project: {e}")
       return False
-   finally:
-      await conn.close()
-
-import random
 
 def generate_light_color() -> str:
    # Generate a random light color (RGB values 180-255 so it stays bright)
@@ -198,7 +191,6 @@ def generate_light_color() -> str:
    g = random.randint(150, 225)
    b = random.randint(150, 255)
    return f"#{r:02X}{g:02X}{b:02X}"
-
 
 def format_date(date_value: datetime) -> str:
    dt = datetime.strftime(date_value, "%Y-%m-%d")
@@ -209,8 +201,7 @@ def format_date(date_value: datetime) -> str:
    else:
       return date_value.strftime("%Y-%m-%d %H:%M")
 
-
-def modify_receive_mails (mails: list[dict]) -> list[dict]:
+async def modify_receive_mails (mails: list[dict]) -> list[dict]:
    try:
       # Regex to capture "Name <email>" OR just "email"
       pattern = re.compile(r"^(.*?)\s*<(.+?)>$|(.+)$", re.MULTILINE)
@@ -225,7 +216,7 @@ def modify_receive_mails (mails: list[dict]) -> list[dict]:
             else:  # Case: Only email
                email = match.group(3).strip()
                name = email.split("@")[0]  # Use local part as name
-
+            project_details = await get_mail_project(item["id"])
             result.append(
                {
                   "id": item["id"],
@@ -235,14 +226,40 @@ def modify_receive_mails (mails: list[dict]) -> list[dict]:
                   "receive_date": format_date(item["receive_date"]),
                   "preview": item["body"],
                   "message_id": item["message_id"],
-                  "project_name": item["project_name"] or None,
-                  "first_name": item["first_name"] or None,
-                  "last_name": item["last_name"] or None,
-                  "project_id": item["project_id"] or None
+                  "status": 'N/A' if item["status"] == 'Not Assigned' else 'A',
+                  "project_details": project_details
                }
             )
       return result
    except Exception as e:
       print(f"Error while modifying receive mails: {e}")
       return []
-   
+
+
+async def get_mail_project(mail_id: list[int]) -> list[dict]:
+   try:
+      query = """
+         SELECT "projectsId" FROM public.mail_receive_project_mails_projects WHERE "mailReceiveId" = $1;
+      """
+      project_ids = await fetch_all(query, mail_id)
+      if project_ids:
+         project_details = await get_project_details(project_ids)
+         return project_details
+      else:
+         return []
+   except Exception as e:
+      print(f"Error while getting mail project: {e}")
+      return []
+
+async def get_project_details(project_ids: list[int]) -> list[dict]:
+   try:
+      query = """
+         SELECT p.project_name, p.id as project_id, pc.first_name, pc.last_name FROM public.projects p
+         JOIN public.project_client_details pc ON p."projectClientId" = pc.id
+         WHERE p.id = ANY($1);
+      """
+      project_details = await fetch_all(query, project_ids)
+      return [dict(r) for r in project_details]
+   except Exception as e:
+      print(f"Error while getting project details: {e}")
+      return []

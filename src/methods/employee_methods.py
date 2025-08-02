@@ -1,16 +1,12 @@
-from database.db import get_db_connection
-
+from database.db_pool import fetch_one, fetch_all
 
 async def fetch_employee_by_id(employee_id):
-    conn = await get_db_connection()
-    if not conn:
-        print("No connection to the database")
-        return None
     try:
-        row = await conn.fetchrow("""
+        query = """
             SELECT e.id, e.cosec_id, e.role, e.department, ejd.first_name, ejd.last_name  
             FROM public.employees e JOIN public.employee_job_details ejd ON e."detailsId" = ejd.id WHERE e.id = $1 
-            """,employee_id)
+            """
+        row = await fetch_one(query, employee_id)
         if row:
             return {
                 "id": row[0],
@@ -26,61 +22,24 @@ async def fetch_employee_by_id(employee_id):
         return None
 
 
-def fetch_employees():
-    conn = get_db_connection()
-    if not conn:
-        return []
-
+async def fetch_employees():
     try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id, cosec_id, role, username, department FROM employees ORDER BY id ASC"
-        )
-        rows = cur.fetchall()
+        query = """
+            SELECT id, cosec_id, role, username, department FROM employees ORDER BY id ASC
+        """
+        rows = await fetch_all(query)
 
-        employees = []
-        for row in rows:
-            employees.append(
-                {
-                    "id": row[0],
-                    "cosec_id": row[1],
-                    "role": row[2],
-                    "username": row[3],
-                    "department": row[4],
-                }
-            )
-        return employees
+        return [
+            {
+                "id": row["id"],
+                "cosec_id": row["cosec_id"],
+                "role": row["role"],
+                "username": row["username"],
+                "department": row["department"],
+            }
+            for row in rows
+        ]
     except Exception as e:
         print(f"Error fetching employees: {e}")
         return []
-    finally:
-        conn.close()
 
-
-# def fetch_employee_by_id(employee_id):
-#     conn = get_db_connection()
-#     if not conn:
-#         return None
-
-#     try:
-#         cur = conn.cursor()
-#         cur.execute(
-#             "SELECT id, cosec_id, role, username, department FROM employees WHERE id = %s",
-#             (employee_id,),
-#         )
-#         row = cur.fetchone()
-
-#         if row:
-#             return {
-#                 "id": row[0],
-#                 "cosec_id": row[1],
-#                 "role": row[2],
-#                 "username": row[3],
-#                 "department": row[4],
-#             }
-#         return None
-#     except Exception as e:
-#         print(f"Error fetching employee: {e}")
-#         return None
-#     finally:
-#         conn.close()

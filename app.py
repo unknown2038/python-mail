@@ -1,23 +1,30 @@
-from flask import Flask, jsonify
-from flask_cors import CORS
+from quart import Quart, jsonify
+from quart_cors import cors
 import config
-from database.db import get_db_connection
 from src.routes.receive_mails_routes import receive_mail_bp
+from database.db_pool import clear_db_pool, get_db_pool
 
-# Check if the database connection is successful
-conn = get_db_connection()
-if not conn:
-    print("DATABASE CONNECTION FAILED")
+def create_app():
+    app = Quart(__name__)
+    app = cors(app, allow_origin="*")  # Allow all origins
+    app.register_blueprint(receive_mail_bp)
 
-# Initialize the Flask app and register the blueprints
-app = Flask(__name__)
-CORS(app)
-app.register_blueprint(receive_mail_bp)
+    @app.before_serving
+    async def startup():
+        await get_db_pool()
 
-# Define the home route
-@app.route("/")
-def home():
-    return jsonify({"message": "Flask is running"})
+    @app.after_serving
+    async def shutdown():
+        await clear_db_pool()
+
+    # Define the home route
+    @app.route("/")
+    def home():
+        return jsonify({"message": "Flask is running"})
+
+    return app
+
+app = create_app()
 
 # Run the app
 if __name__ == "__main__":

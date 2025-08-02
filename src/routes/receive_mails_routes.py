@@ -1,5 +1,4 @@
-import re
-from flask import Blueprint, request, jsonify
+from quart import Blueprint, request, jsonify
 from src.methods.receive_mails.receive_mail_helper import (
     assign_mails_to_project,
     modify_receive_mails,
@@ -32,7 +31,7 @@ async def get_receive_mails():
             receive_mails = await fetch_receive_mails(
                 user_id, mail_id_name, date_filter, is_self_sent, mail_of
             )
-            result = modify_receive_mails(receive_mails)
+            result = await modify_receive_mails(receive_mails)
             return jsonify(result), 200
         else:
             return jsonify({"error": "No date provided"}), 400
@@ -55,7 +54,7 @@ async def get_mail_creds():
 async def assign_project_to_mails():
     try:
         # Parse JSON body
-        data = request.get_json()  # Flask async support
+        data = await request.get_json()  # Flask async support
         project_ids = data.get("project_ids")
         mail_ids = data.get("mail_ids", [])
         # Validate inputs
@@ -82,7 +81,7 @@ async def assign_project_to_mails():
 async def import_mails_from_gmail():
     try:
         # Parse JSON body
-        data = request.get_json()  # Flask async support
+        data = await request.get_json()  # Flask async support
         date_str = data.get("date")  # Expecting format: YYYY-MM-DD
         if date_str:
             date_obj = datetime.strptime(date_str, "%Y-%m-%d")
@@ -112,7 +111,7 @@ async def search_mail():
 @receive_mail_bp.route("/receive/move-to-trash-mails", methods=["POST"])
 async def move_to_trash_mails():
     try:
-        data = request.get_json()  # Flask async support
+        data =await request.get_json()  # Flask async support
         mail_ids = data.get("mail_ids")
         # Validate inputs
         if not isinstance(mail_ids, list) or not all(
@@ -129,7 +128,7 @@ async def move_to_trash_mails():
 @receive_mail_bp.route("/receive/remove-from-trash-mails", methods=["POST"])
 async def remove_from_trash_mails():
     try:
-        data = request.get_json()  # Flask async support
+        data = await request.get_json()  # Flask async support
         mail_ids = data.get("mail_ids")
         # Validate inputs
         if not isinstance(mail_ids, list) or not all(
