@@ -21,10 +21,7 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
       end_dt = date_filter.replace(hour=23, minute=59, second=59, microsecond=999000)
       employee = await fetch_employee_by_id(user_id)
       
-      if mail_of == 'Approval':
-         # add approval mail logic
-         return []
-      elif mail_of == 'Trash':
+      if mail_of == 'Trash':
          query = """
             SELECT id, from_id, subject, receive_date, body, message_id, status
             FROM public.mail_receive

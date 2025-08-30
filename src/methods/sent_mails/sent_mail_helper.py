@@ -15,4 +15,3 @@ async def fetch_compose_mail_from_list() -> list[dict]:
    except Exception as e:
       print(f"Error fetching compose mail from list: {e}")
       return jsonify({"error": e}), 400
-   
