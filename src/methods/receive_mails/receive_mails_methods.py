@@ -285,7 +285,7 @@ async def search_any_mail(search_query, user_id, mail_id_name) -> list[dict]:
       employee = await fetch_employee_by_id(user_id)
       if employee['role'] == 'Admin' or employee['department'] == 'MDO' or employee['department'] == 'Management':
          query = """
-            SELECT id, from_id, subject, receive_date, body, message_id
+            SELECT id, from_id, subject, receive_date, body, message_id, status
             FROM public.mail_receive 
             WHERE mail_id_name = $2
                AND (
@@ -303,7 +303,7 @@ async def search_any_mail(search_query, user_id, mail_id_name) -> list[dict]:
       
       elif employee['role'] == 'HOD':
          query = """
-            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body, mr.message_id
+            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body, mr.message_id, status
             FROM public.mail_receive mr
             JOIN public.mail_receive_project_mails_projects prmp
                ON prmp."mailReceiveId" = mr.id
@@ -328,7 +328,7 @@ async def search_any_mail(search_query, user_id, mail_id_name) -> list[dict]:
       
       elif any(key in employee['role'] for key in ['Jr.','Sr.','Intern']):
          query = """
-            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body, mr.message_id
+            SELECT mr.id, mr.from_id, mr.subject, mr.receive_date, mr.body, mr.message_id, status
             FROM public.mail_receive mr
             JOIN public.mail_receive_project_mails_projects prmp
                ON prmp."mailReceiveId" = mr.id

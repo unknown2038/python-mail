@@ -10,3 +10,4 @@ DATABASE_USER = "root"
 DATABASE_PASSWORD = "URMANISH123"
 
 RECEIVE_FOLDER_PATH = '/mnt/backup/Upload/New_Mail'
+UPLOAD_MAILS_PATH = '/mnt/backup/Upload/New_Sent_Mail'

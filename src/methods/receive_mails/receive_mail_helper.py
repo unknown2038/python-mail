@@ -226,7 +226,7 @@ async def modify_receive_mails (mails: list[dict]) -> list[dict]:
                   "receive_date": format_date(item["receive_date"]),
                   "preview": item["body"],
                   "message_id": item["message_id"],
-                  "status": 'N/A' if item["status"] == 'Not Assigned' else 'A',
+                  "status": 'N/A' if  item["status"] and item["status"] == 'Not Assigned' else 'A',
                   "project_details": project_details
                }
             )

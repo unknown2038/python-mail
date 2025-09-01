@@ -102,8 +102,11 @@ async def search_mail():
         mail_id_name = request.args.get("mail_id_name")
 
         receive_mails = await search_any_mail(search_query, user_id, mail_id_name)
-        result = modify_receive_mails(receive_mails)
-        return jsonify(result), 200
+        if len(receive_mails) > 0:
+            result = await modify_receive_mails(receive_mails)
+            return jsonify(result), 200
+        else:
+            return jsonify([]), 200
     except Exception as e:
         print(f"Error searching mail: {e}")
         return jsonify({"error": str(e)}), 500

@@ -56,6 +56,13 @@ async def execute_one(query: str, *args):
    async with db_pool.acquire() as conn:
         return await conn.execute(query, *args)
 
+# ⚙️ Insert, Update, Delete — single execution with returning id
+async def execute_one_returning(query: str, *args) -> int:
+   if db_pool is None:
+      raise RuntimeError("DB pool not initialized.")
+   async with db_pool.acquire() as conn:
+        return await conn.fetchval(query, *args)
+
 async def call_db_pool():
    if db_pool is None:
       raise RuntimeError("DB pool not initialized.")
