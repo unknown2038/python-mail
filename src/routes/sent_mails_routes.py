@@ -1,7 +1,10 @@
 from datetime import datetime
-from quart import Blueprint, json, request, jsonify
-from src.methods.sent_mails.sent_mails_methods import fetch_sent_draft_mails, save_draft_mail
-from src.methods.sent_mails.sent_mail_helper import fetch_compose_mail_from_list, to_int_or_none
+import os
+from pathlib import Path
+from quart import Blueprint, json, request, jsonify, send_file
+import config
+from src.methods.sent_mails.sent_mails_methods import check_mail, fetch_draft_mail_by_id, fetch_sent_approval_mails, fetch_sent_draft_mails, remove_sent_draft_mails, save_draft_mail
+from src.methods.sent_mails.sent_mail_helper import fetch_compose_mail_from_list, fetch_mail_attachments, get_save_mail_payload, to_int_or_none
 
 sent_mail_bp = Blueprint("sent_mail_bp", __name__)
 
@@ -11,8 +14,7 @@ async def get_sent_draft_mails():
    try:
       user_id = request.args.get("user_id", type=int)
       mail_id_name = request.args.get("mail_id_name")
-      mail_of = request.args.get("mail_of")
-      draft_mails = await fetch_sent_draft_mails(user_id, mail_id_name, mail_of)
+      draft_mails = await fetch_sent_draft_mails(user_id, mail_id_name)
       return jsonify(draft_mails), 200
    except Exception as e:
       print(f"Error fetching sent mails: {e}")
@@ -21,46 +23,24 @@ async def get_sent_draft_mails():
 @sent_mail_bp.route("/sent/sent-approval-mails", methods=["GET"])
 async def get_sent_approval_mails():
    try:
-      user_id = request.args.get("user_id", type=int)
       mail_id_name = request.args.get("mail_id_name")
-      mail_of = request.args.get("mail_of")
-      approval_mails = await fetch_sent_approval_mails(user_id, mail_id_name, mail_of)
-      return jsonify(approval_mails), 200
+      date_str = request.args.get("date")  # Expecting format: YYYY-MM-DD
+      
+      if date_str:
+            date_filter = datetime.strptime(date_str, "%Y-%m-%d")
+            approval_mails = await fetch_sent_approval_mails(mail_id_name, date_filter)
+            return jsonify(approval_mails), 200
+      else:
+         return jsonify({"error": "No date provided"}), 400
    except Exception as e:
       print(f"Error fetching sent mails: {e}")
       return jsonify({"error": e}), 400
 
-
 @sent_mail_bp.route("/sent/compose-mail/save-draft-mail", methods=["POST"])
 async def store_mail_draft():
    try:
-      if "multipart/form-data" in (request.content_type or ""):
-            form = await request.form
-            files = await request.files
-            payload = json.loads(form.get("payload", "{}"))
-            attachments = files.getlist("files")   # list of FileStorage
-      else:
-         payload = await request.get_json(silent=True) or {}
-         attachments = []
-
-      id_name = 'INFO' if 'info@designcore.co.in' in payload.get("from") else 'RAJHANS' if 'designcore.rajhans@gmail.com' in payload.get("from") else 'UNKNOWN'
-      input_object = {
-         'id': to_int_or_none(payload.get("id")),
-         'mail_id_name': id_name,
-         'from_id': payload.get("from"),
-         'to_ids': payload.get("to"),
-         'cc_ids': payload.get("cc"),
-         'bcc_ids': payload.get("bcc"),
-         'subject': payload.get("subject"),
-         'body': payload.get("body"),
-         'projectId': to_int_or_none(payload.get("project")),
-         'path': payload.get("path"),
-         'is_draft_mail': True,
-         'draft_mail_date': datetime.now(),
-         'mail_type': 'MAIL',
-         'sentById': payload.get("entry_by")
-      }
-      return await save_draft_mail(input_object, attachments)
+      input_data = await get_save_mail_payload(request)
+      return await save_draft_mail(input_data["input_object"], input_data["attachments"])
    except Exception as e:
       print(f"Error saving draft mail: {e}")
       return jsonify({"error": e}), 400
@@ -78,8 +58,45 @@ async def get_compose_mail_from_list():
 async def remove_draft_mails():
    try:
       payload = await request.get_json(silent=True) or {}
-      print(payload.get('mail_ids'))
-      return jsonify({"message": "Draft mails removed"}), 200
+      mail_ids = [int(x) for x in (payload.get("mail_ids") or []) if isinstance(x, (int, str)) and str(x).strip().lstrip("+-").isdigit()]
+      return await remove_sent_draft_mails(mail_ids)
    except Exception as e:
       print(f"Error saving draft mail: {e}")
+      return jsonify({"error": e}), 400
+   
+@sent_mail_bp.route("/sent/compose-mail/edit-mail-compose", methods=["GET"])
+async def edit_draft_mails():
+   try:
+      mail_id = request.args.get("id", type=int)
+      compose_mail = await fetch_draft_mail_by_id(mail_id)
+      attachments = await fetch_mail_attachments(mail_id, compose_mail.get("mail_id_name"))
+      compose_mail["attachments"] = attachments
+      return jsonify(compose_mail), 200
+   except Exception as e:
+      print(f"Error saving draft mail: {e}")
+      return jsonify({"error": e}), 400
+
+@sent_mail_bp.route("/sent/compose-mail/each-attachment", methods=["GET"])
+async def get_each_attachment():
+   try:
+      mail_id = request.args.get("id")
+      mail_id_name = request.args.get("mail_id_name")
+      file_name = request.args.get("file_name")
+      base_path = config.UPLOAD_MAILS_PATH
+      file_path = Path(os.path.join(base_path, mail_id_name, mail_id, file_name).replace("\\", "/"))
+
+      if not file_path.exists() or not file_path.is_file():
+         return None
+      return await send_file(file_path, as_attachment=False)
+   except Exception as e:
+      print(f"Error sending attachment: {e}")
+      return jsonify({"error": e}), 400
+
+@sent_mail_bp.route("/sent/check-mail", methods=["POST"])
+async def check_sent_mail():
+   try:
+      input_data = await get_save_mail_payload(request)
+      return await check_mail(input_data["input_object"], input_data["attachments"])
+   except Exception as e:
+      print(f"Error checking sent mail: {e}")
       return jsonify({"error": e}), 400

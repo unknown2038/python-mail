@@ -20,7 +20,7 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
       start_dt = date_filter.replace(hour=0, minute=0, second=0, microsecond=0)
       end_dt = date_filter.replace(hour=23, minute=59, second=59, microsecond=999000)
       employee = await fetch_employee_by_id(user_id)
-      
+
       if mail_of == 'Trash':
          query = """
             SELECT id, from_id, subject, receive_date, body, message_id, status
@@ -258,8 +258,6 @@ async def inset_mail_in_db(mail_objects):
       # Process attachments and assign projects
       await save_mail_attachments(mail_objects)
       await assign_mail_to_project(inserted_ids)
-
-      print(f"Mail inserted in db: {len(mail_objects)}")
    except Exception as e:
       print(f"Error while inserting mail in db: {e}")
 
