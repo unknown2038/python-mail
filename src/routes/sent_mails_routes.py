@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from quart import Blueprint, json, request, jsonify, send_file
 import config
+from src.methods.sent_mails.sent_mail_google import fetch_mail_creds
 from src.methods.sent_mails.sent_mails_methods import check_mail, fetch_draft_mail_by_id, fetch_sent_approval_mails, fetch_sent_draft_mails, remove_sent_draft_mails, save_draft_mail
 from src.methods.sent_mails.sent_mail_helper import fetch_compose_mail_from_list, fetch_mail_attachments, get_save_mail_payload, to_int_or_none
 

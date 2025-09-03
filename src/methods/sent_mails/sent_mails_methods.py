@@ -8,8 +8,7 @@ from quart import jsonify
 
 import config
 from database.db_pool import execute_one, execute_one_returning, executemany, fetch_all, fetch_one
-from src.methods.sent_mails.sent_mail_helper import save_sent_mail_attachments, sent_to_gmail_queue, to_int_or_none
-from src.methods.employee_methods import fetch_employee_by_id
+from src.methods.sent_mails.sent_mail_helper import fetch_sent_mail_attachment_file_paths, save_sent_mail_attachments, sent_to_gmail_queue, to_int_or_none
 
 
 async def fetch_sent_draft_mails(user_id, mail_id_name):
@@ -210,14 +209,11 @@ async def check_mail(input_object, attachments):
             path = $10, 
             "projectId" = $11,
             "sentById" = $12, 
-            mail_type = $13,
-            "checkById" = $14, 
-            approval_rejection_date = $15,
-            approval_rejection_remark = $16,
-            status = $17
-         where id = $18
+            mail_type = $13
+         where id = $14
          returning id;
       """
+      
       mail_id = await execute_one_returning(query, 
          input_object.get("mail_id_name"), 
          input_object.get("from_id"), 
@@ -232,21 +228,56 @@ async def check_mail(input_object, attachments):
          input_object.get("projectId"), 
          input_object.get("sentById"), 
          input_object.get("mail_type"),
-         input_object.get("checkById"),
-         datetime.now(),
-         input_object.get("remark"),
-         'Approved' if input_object.get("is_approve") else 'Rejected',
          input_object.get("id"))
-         
+      
       if len(attachments) > 0:
          await save_sent_mail_attachments(input_object, mail_id, attachments)
-      else:
-         pass
-      
+
       if input_object.get("is_approve"):
-         return await sent_to_gmail_queue(mail_id, attachments)
+         status = await sent_to_gmail_queue(input_object.get("id"))
+         if status:
+            query = """
+               update public.mail_sent set 
+                  "checkById" = $1, 
+                  approval_rejection_date = $2,
+                  approval_rejection_remark = $3,
+                  status = $4
+               where id = $5
+               returning id;
+            """
+            mail_id = await execute_one_returning(query, 
+               input_object.get("checkById"),
+               datetime.now(),
+               input_object.get("remark"),
+               'Approved',
+               input_object.get("id"))
+            
+            return jsonify({"message": "Mail approved successfully" }), 200
+         else:
+            remark_query = """
+               select gmail_remark from public.mail_sent where id = $1
+            """
+            remark = await fetch_one(remark_query, input_object.get("id"))
+            return jsonify({"message": remark.get("gmail_remark") }), 200
       else:
-         return jsonify({"message": "Mail checked successfully" }), 200
+         query = """
+            update public.mail_sent set 
+               "checkById" = $1, 
+               approval_rejection_date = $2,
+               approval_rejection_remark = $3,
+               status = $4
+            where id = $5
+            returning id;
+         """
+         mail_id = await execute_one_returning(query, 
+            input_object.get("checkById"),
+            datetime.now(),
+            input_object.get("remark"),
+            'Rejected',
+            input_object.get("id"))
+         return jsonify({"message": "Mail rejected successfully" }), 200
+   
    except Exception as e:
       print(f"Error checking mail: {e}")
       return jsonify({"error": e}), 400
+

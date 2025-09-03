@@ -2,6 +2,7 @@ from quart import Quart, jsonify
 from quart_cors import cors
 import config
 import os, json, logging
+from src.methods.cron_job import init_scheduler
 from src.routes.receive_mails_routes import receive_mail_bp
 from src.routes.sent_mails_routes import sent_mail_bp
 from database.db_pool import clear_db_pool, get_db_pool
@@ -16,6 +17,7 @@ def create_app():
     @app.before_serving
     async def startup():
         await get_db_pool()
+        init_scheduler()
 
     @app.after_serving
     async def shutdown():

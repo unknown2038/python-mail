@@ -1,4 +1,4 @@
-Flask==2.3.3
+Flask==3.0.3
 Flask[async]==2.3.3
 psycopg2==2.9.9
 SQLAlchemy==2.0.41
@@ -8,5 +8,12 @@ google-auth==2.29.0
 google-auth-oauthlib==1.2.0
 aiofiles==24.1.0
 asyncpg
-quart
-quart-cors
+quart==0.19.6
+quart-cors==0.8.0
+Werkzeug==3.0.3
+pytz
+google-api-python-client 
+google-auth-httplib2 
+google-auth-oauthlib
+apscheduler
+blinker==1.8.2

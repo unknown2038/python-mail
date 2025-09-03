@@ -8,7 +8,8 @@ import os
 from pathlib import Path
 from werkzeug.utils import secure_filename
 import config
-from database.db_pool import fetch_all
+from database.db_pool import execute_one, fetch_all, fetch_one
+from src.methods.sent_mails.sent_mail_google import send_gmail_with_attachments_async
 from src.methods.receive_mails.receive_mail_file_manager import sanitize_filename
 
 
@@ -25,7 +26,6 @@ async def fetch_compose_mail_from_list() -> list[dict]:
    except Exception as e:
       print(f"Error fetching compose mail from list: {e}")
       return jsonify({"error": e}), 400
-   
 
 
 async def save_sent_mail_attachments(input_object, mail_id, attachments, base_path=config.UPLOAD_MAILS_PATH):
@@ -95,7 +95,6 @@ async def fetch_mail_attachments(mail_id, mail_id_name, base_path=config.UPLOAD_
       print(f"Error fetching mail attachments: {e}")
       return jsonify({"error": e}), 400
 
-
 async def get_save_mail_payload(request):
    try:
       if "multipart/form-data" in (request.content_type or ""):
@@ -135,12 +134,78 @@ async def get_save_mail_payload(request):
       print(f"Error getting save mail payload: {e}")
       return jsonify({"error": e}), 400
 
+async def send_mail_to_gmail(id: int):
+   try:  
+      query = """
+         select id, mail_id_name, from_id, to_ids, cc_ids, bcc_ids, subject, body from public.mail_sent where id = $1;
+      """
+      mail = await fetch_one(query, id)
+      attachments = await fetch_sent_mail_attachment_file_paths(id, mail.get("mail_id_name"))
+      CID = "mail_compose"
+      ASSET_IN_HTML = "assets/images/mail_compose.png"
+      INLINE_IMAGE_PATH = "/mnt/data/python-mail/src/shared/assets/mail_compose.png"  # <-- put the real absolute path here
+      # INLINE_IMAGE_PATH = "src/shared/assets/mail_compose.png"  # <-- put the real absolute path here
 
-async def sent_to_gmail_queue(mail_id, attachments):
+      html_for_email = mail.get("body").replace(ASSET_IN_HTML, f"cid:{CID}")
+      
+      msg_id = await send_gmail_with_attachments_async(
+            email=mail.get("from_id"),
+            to=mail.get("to_ids"),
+            cc=mail.get("cc_ids"),
+            bcc=mail.get("bcc_ids"),
+            subject=mail.get("subject"),
+            text_body=None,
+            html_body=html_for_email,
+            attachments=attachments,
+            from_display_name='Manish Choksi DesignCore',
+            cid_images={CID: INLINE_IMAGE_PATH},
+      )
+      if "error" in msg_id:
+         obj = json.loads(msg_id)
+         query = """ UPDATE public.mail_sent SET gmail_remark = $1 WHERE id = $2; """
+         error = obj.get("error")
+         await execute_one(query, error.get("message"), id)
+         return dict(id=None) 
+      else:
+         return dict(id=msg_id)
+      
+   except Exception as e:
+      print(f"Error sending mail to gmail: {e}")
+      return jsonify({"error": e}), 400
+
+async def sent_to_gmail_queue(mail_id):
    try:
-      print(f"Mail ID: {mail_id}")
-      print(f"Attachments: {attachments}")
-      return jsonify({"message": "Mail sent to gmail queue" }), 200
+      message = await send_mail_to_gmail(mail_id)
+      if message.get("id") is None:
+         return False
+      else:
+         query = """
+            UPDATE public.mail_sent SET message_id = $1 WHERE id = $2;
+         """
+         await execute_one(query, message.get("id"), mail_id)
+         return True 
    except Exception as e:
       print(f"Error sending to gmail queue: {e}")
       return jsonify({"error": e}), 400
+
+
+async def fetch_sent_mail_attachment_file_paths(mail_id: int, mail_id_name: str, base_path=config.UPLOAD_MAILS_PATH):
+   try:
+      # 1) find Base folder
+      account_folder = os.path.join(base_path, sanitize_filename(mail_id_name))
+      account_folder = os.path.normpath(account_folder)
+      if not os.path.exists(account_folder) or not os.path.isdir(account_folder):
+         return []
+      
+      # 2) find ID Folder
+      id_folder = os.path.join(account_folder, str(mail_id))
+      id_folder = os.path.normpath(id_folder)
+      if not os.path.exists(id_folder) or not os.path.isdir(id_folder):
+         return []
+      
+      return [str(p) for p in Path(id_folder.replace("\\", "/")).rglob("*") if p.is_file()]
+   
+   except Exception as e:
+      print(f"Error fetching sent mail attachment file paths: {e}")
+      return jsonify({"error": e}), 400
+

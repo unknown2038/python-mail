@@ -82,6 +82,7 @@ async def import_mails_from_gmail():
     try:
         # Parse JSON body
         data = await request.get_json()  # Flask async support
+        print(data)
         date_str = data.get("date")  # Expecting format: YYYY-MM-DD
         if date_str:
             date_obj = datetime.strptime(date_str, "%Y-%m-%d")

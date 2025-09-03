@@ -1,5 +1,5 @@
-HOST = "127.0.0.1"
-# HOST = "10.254.254.242"
+# HOST = "127.0.0.1"
+HOST = "10.254.254.242"
 PORT = 83
 DEBUG = True
 
@@ -11,3 +11,9 @@ DATABASE_PASSWORD = "URMANISH123"
 
 RECEIVE_FOLDER_PATH = '/mnt/backup/Upload/New_Mail'
 UPLOAD_MAILS_PATH = '/mnt/backup/Upload/New_Sent_Mail'
+
+
+GMAIL_SIZE_LIMIT_BYTES = 24 * 1024 * 1024  # ~24 MB raw limit
+
+TOKEN_URI = "https://oauth2.googleapis.com/token"
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
