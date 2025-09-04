@@ -41,7 +41,7 @@ async def fetch_sent_approval_mails(mail_id_name, date_filter):
    try:
       query = """
          select 
-            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, 
+            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message,
             (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
             (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
             p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
@@ -60,7 +60,7 @@ async def fetch_sent_approval_mails(mail_id_name, date_filter):
             on checkerDetails.id = checker."detailsId"
          where sm.is_draft_mail = false
             and sm.status = 'In Queue'
-            and sm.mail_id_name = $1
+            and (sm.mail_id_name = $1 or sm.mail_type = 'WHATSAPP')
             and sm."createdAt"::date = $2
          order by sm."createdAt" DESC;
          """
@@ -164,7 +164,28 @@ async def fetch_draft_mail_by_id(mail_id):
    except Exception as e:
       print(f"Error fetching draft mail by id: {e}")
       return jsonify({"error": e}), 400
-   
+
+async def fetch_whatsapp_mail_by_id(mail_id):
+   try:
+      query = """
+         select 
+            sm.id, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.path, p.id as project_id, e.id as entry_by
+            from public.mail_sent sm 
+            left join public.projects p 
+            on p.id = sm."projectId"
+            left join public.project_client_details pcd
+            on pcd.id = p."projectClientId"
+            left join public.employees e
+            on e.id = sm."sentById"
+         where sm.id = $1;
+      """
+      mail = await fetch_one(query, mail_id)
+      return dict(mail)
+   except Exception as e:
+      print(f"Error fetching draft mail by id: {e}")
+      return jsonify({"error": e}), 400
+
+
 async def remove_sent_draft_mails(mail_ids):
    try:
       find_query = """
@@ -281,3 +302,142 @@ async def check_mail(input_object, attachments):
       print(f"Error checking mail: {e}")
       return jsonify({"error": e}), 400
 
+async def check_wp_mail(input_object, attachments):
+   try:
+      query = """
+         update public.mail_sent set 
+            whatsapp_numbers = $1, 
+            whatsapp_group = $2, 
+            is_whatsapp_mail = $3, 
+            message = $4, 
+            is_draft_mail = $5, 
+            mail_type = $6, 
+            message_type = $7, 
+            "projectId" = $8, 
+            "sentById" = $9, 
+            path = $10
+         where id = $11
+         returning id;
+      """
+      mail_id = await execute_one_returning(query, 
+         input_object.get("whatsapp_numbers"), 
+         input_object.get("whatsapp_group"), 
+         input_object.get("is_whatsapp_mail"), 
+         input_object.get("message"), 
+         False, 
+         input_object.get("mail_type"), 
+         input_object.get("message_type"), 
+         input_object.get("projectId"), 
+         input_object.get("checkById"), 
+         input_object.get("path"),
+         input_object.get("id"))
+      
+      if len(attachments) > 0:
+         await save_sent_mail_attachments(input_object, mail_id, attachments)
+      else:
+         pass
+      if input_object.get("is_approve"):
+         query = """
+            update public.mail_sent set 
+               "checkById" = $1, 
+               approval_rejection_date = $2,
+               approval_rejection_remark = $3,
+               status = $4
+            where id = $5
+            returning id;
+         """
+         mail_id = await execute_one_returning(query, 
+            input_object.get("checkById"),
+            datetime.now(),
+            input_object.get("remark"),
+            'Approved',
+            input_object.get("id"))
+         return jsonify({"message": "Mail approved successfully" }), 200
+      else:
+         query = """
+            update public.mail_sent set 
+               "checkById" = $1, 
+               approval_rejection_date = $2,
+               approval_rejection_remark = $3,
+               status = $4
+            where id = $5
+            returning id;
+         """
+         mail_id = await execute_one_returning(query, 
+            input_object.get("checkById"),
+            datetime.now(),
+            input_object.get("remark"),
+            'Rejected',
+            input_object.get("id"))
+         return jsonify({"message": "Whatsapp rejected successfully" }), 200
+   
+   except Exception as e:
+      print(f"Error checking whatsapp mail: {e}")
+      return jsonify({"error": e}), 400
+
+
+
+async def save_whatsapp_mail(input_object, attachments):
+   try:
+      mail_id = None
+      if input_object.get("id"):
+         query = """
+            update public.mail_sent set 
+               whatsapp_numbers = $1, 
+               whatsapp_group = $2, 
+               is_whatsapp_mail = $3, 
+               message = $4, 
+               is_draft_mail = $5, 
+               mail_type = $6, 
+               message_type = $7, 
+               "projectId" = $8, 
+               "sentById" = $9, 
+               path = $10
+            where id = $11
+            returning id;
+         """
+         mail_id = await execute_one_returning(query, 
+            input_object.get("whatsapp_numbers"), 
+            input_object.get("whatsapp_group"), 
+            input_object.get("is_whatsapp_mail"), 
+            input_object.get("message"), 
+            False, 
+            input_object.get("mail_type"), 
+            input_object.get("message_type"), 
+            input_object.get("projectId"), 
+            input_object.get("checkById"), 
+            input_object.get("path"),
+            input_object.get("id"))
+         
+         if len(attachments) > 0:
+            await save_sent_mail_attachments(input_object, mail_id, attachments)
+         else:
+            pass
+      else:
+         # Save the draft mail
+         query = """
+            insert into public.mail_sent (whatsapp_numbers, whatsapp_group, is_whatsapp_mail, message, is_draft_mail, mail_type, message_type, "projectId", "sentById", path)
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            returning id;
+         """
+         mail_id = await execute_one_returning(query, 
+            input_object.get("whatsapp_numbers"), 
+            input_object.get("whatsapp_group"), 
+            input_object.get("is_whatsapp_mail"), 
+            input_object.get("message"), 
+            False, 
+            input_object.get("mail_type"), 
+            input_object.get("message_type"), 
+            input_object.get("projectId"), 
+            input_object.get("checkById"), 
+            input_object.get("path"))
+
+         if len(attachments) > 0:
+            await save_sent_mail_attachments(input_object, mail_id, attachments)
+         else:
+            pass
+
+      return jsonify({"message": "Whatsapp mail saved successfully"}), 200
+   except Exception as e:
+      print(f"Error saving whatsapp mail: {e}")
+      return jsonify({"error": e}), 400

@@ -1,4 +1,5 @@
 from quart import Blueprint, request, jsonify
+from database.db_pool import fetch_one
 from src.methods.receive_mails.receive_mail_helper import (
     assign_mails_to_project,
     modify_receive_mails,
@@ -156,3 +157,25 @@ async def get_specific_mail_details():
         print(f"Error fetching specific mail details: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+@receive_mail_bp.route("/receive/is-mail-not-exists", methods=["GET"])
+async def is_mail_not_exists():
+    try:
+        query = """
+            select exists (select 1 from public.mail_receive where message_id = $1) as is_exists;
+        """
+        mail_in_receive = await fetch_one(query,'<0a8c5cd0-a460-1bad-91a3-23ef73981860@gmail.com>')
+        
+        # True if mail exists, False if mail not exists
+        
+        if not mail_in_receive.get('is_exists'): # Mail not exists in table
+            query = """
+                select exists (select 1 from public.mail_trash where message_id = $1) as is_exists;
+            """
+            mail_in_trash = await fetch_one(query,'<0a8c5cd0-a460-1bad-91a3-23ef73981860@gmail.com>')
+            return jsonify(mail_in_trash.get('is_exists')) # True if mail exists, False if mail not exists
+        else:
+            return jsonify(mail_in_receive.get('is_exists')) # Mail Exists in table
+    except Exception as e:
+        print(f"Error checking if mail not exists: {e}")
+        return jsonify({"error": str(e)}), 500

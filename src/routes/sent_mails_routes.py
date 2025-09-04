@@ -4,8 +4,8 @@ from pathlib import Path
 from quart import Blueprint, json, request, jsonify, send_file
 import config
 from src.methods.sent_mails.sent_mail_google import fetch_mail_creds
-from src.methods.sent_mails.sent_mails_methods import check_mail, fetch_draft_mail_by_id, fetch_sent_approval_mails, fetch_sent_draft_mails, remove_sent_draft_mails, save_draft_mail
-from src.methods.sent_mails.sent_mail_helper import fetch_compose_mail_from_list, fetch_mail_attachments, get_save_mail_payload, to_int_or_none
+from src.methods.sent_mails.sent_mails_methods import check_mail, check_wp_mail, fetch_draft_mail_by_id, fetch_sent_approval_mails, fetch_sent_draft_mails, fetch_whatsapp_mail_by_id, remove_sent_draft_mails, save_draft_mail, save_whatsapp_mail
+from src.methods.sent_mails.sent_mail_helper import fetch_compose_mail_from_list, fetch_mail_attachments, get_save_mail_payload, save_whatsapp_mail_payload, to_int_or_none
 
 sent_mail_bp = Blueprint("sent_mail_bp", __name__)
 
@@ -98,6 +98,36 @@ async def check_sent_mail():
    try:
       input_data = await get_save_mail_payload(request)
       return await check_mail(input_data["input_object"], input_data["attachments"])
+   except Exception as e:
+      print(f"Error checking sent mail: {e}")
+      return jsonify({"error": e}), 400
+
+@sent_mail_bp.route("/sent/whatsapp-mail/save-whatsapp-mail", methods=["POST"])
+async def store_whatsapp_mail():
+   try:
+      input_data = await save_whatsapp_mail_payload(request)
+      return await save_whatsapp_mail(input_data["input_object"], input_data["attachments"])
+   except Exception as e:
+      print(f"Error saving draft mail: {e}")
+      return jsonify({"error": e}), 400
+
+@sent_mail_bp.route("/sent/whatsapp-mail/edit-whatsapp-compose", methods=["GET"])
+async def get_whatsapp_mail():
+   try:
+      mail_id = request.args.get("id", type=int)
+      compose_mail = await fetch_whatsapp_mail_by_id(mail_id)
+      attachments = await fetch_mail_attachments(mail_id, 'WHATSAPP')
+      compose_mail["attachments"] = attachments
+      return jsonify(compose_mail), 200
+   except Exception as e:
+      print(f"Error fetching whatsapp mail: {e}")
+      return jsonify({"error": e}), 400
+
+@sent_mail_bp.route("/sent/whatsapp-mail/check-whatsapp-mail", methods=["POST"])
+async def check_whatsapp_mail():
+   try:
+      input_data = await save_whatsapp_mail_payload(request)
+      return await check_wp_mail(input_data["input_object"], input_data["attachments"])
    except Exception as e:
       print(f"Error checking sent mail: {e}")
       return jsonify({"error": e}), 400

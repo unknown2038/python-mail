@@ -134,6 +134,42 @@ async def get_save_mail_payload(request):
       print(f"Error getting save mail payload: {e}")
       return jsonify({"error": e}), 400
 
+
+async def save_whatsapp_mail_payload(request):
+   try:
+      if "multipart/form-data" in (request.content_type or ""):
+            form = await request.form
+            files = await request.files
+            payload = json.loads(form.get("payload", "{}"))
+            attachments = files.getlist("files")   # list of FileStorage
+      else:
+         payload = await request.get_json(silent=True) or {}
+         attachments = []
+      return {
+         "input_object": {
+            'id': to_int_or_none(payload.get("id")),
+            'whatsapp_numbers': payload.get("whatsapp_numbers"),
+            'whatsapp_group': payload.get("whatsapp_groups"),
+            'is_whatsapp_mail': payload.get("is_whatsapp_mail"),
+            'message': payload.get("message"),
+            'sentById': payload.get("entry_by"),
+            'remark': payload.get("remark"),
+            'projectId': to_int_or_none(payload.get("project")),
+            'path': payload.get("path"),
+            'checkById': payload.get("check_by"),
+            'is_check': payload.get("is_check"),
+            'is_approve': payload.get("is_approve"),
+            'remark': payload.get("remark"),
+            'mail_type': 'WHATSAPP',
+            'mail_id_name': 'WHATSAPP',
+         },
+         "attachments": attachments
+      }
+   except Exception as e:
+      print(f"Error getting save mail payload: {e}")
+      return jsonify({"error": e}), 400
+
+
 async def send_mail_to_gmail(id: int):
    try:  
       query = """
@@ -143,8 +179,8 @@ async def send_mail_to_gmail(id: int):
       attachments = await fetch_sent_mail_attachment_file_paths(id, mail.get("mail_id_name"))
       CID = "mail_compose"
       ASSET_IN_HTML = "assets/images/mail_compose.png"
-      INLINE_IMAGE_PATH = "/mnt/data/python-mail/src/shared/assets/mail_compose.png"  # <-- put the real absolute path here
-      # INLINE_IMAGE_PATH = "src/shared/assets/mail_compose.png"  # <-- put the real absolute path here
+      # INLINE_IMAGE_PATH = "/mnt/data/python-mail/src/shared/assets/mail_compose.png"  # <-- put the real absolute path here
+      INLINE_IMAGE_PATH = "src/shared/assets/mail_compose.png"  # <-- put the real absolute path here
 
       html_for_email = mail.get("body").replace(ASSET_IN_HTML, f"cid:{CID}")
       

@@ -1,5 +1,5 @@
 Flask==3.0.3
-Flask[async]==2.3.3
+Flask[async]==3.0.3
 psycopg2==2.9.9
 SQLAlchemy==2.0.41
 alembic==1.13.1
@@ -17,3 +17,4 @@ google-auth-httplib2
 google-auth-oauthlib
 apscheduler
 blinker==1.8.2
+uvicorn

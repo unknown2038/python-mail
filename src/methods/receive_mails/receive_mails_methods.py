@@ -206,8 +206,8 @@ async def save_mails(mails, username, name):
          msg_id = mail["content"].get("Message-ID", "")
          if not msg_id:
             continue      
-         mail_in_not_receive = await is_mail_not_exists(msg_id)
-         if mail_in_not_receive:
+         mail_in_receive = await is_mail_exists(msg_id)
+         if not mail_in_receive:
             mail_obj = mail_object(mail["content"], mail["is_sent"], username, name)
             mail_objects.append(mail_obj)
          else:
@@ -219,22 +219,18 @@ async def save_mails(mails, username, name):
       print(f"Error while saving mails: {e}")
 
 
-async def is_mail_not_exists(msg_id) -> bool:
+async def is_mail_exists(msg_id) -> bool:
    try:
-      query = """
-         SELECT NOT EXISTS (SELECT 1 FROM public.mail_receive WHERE message_id = $1)
-      """
+      query = """ select exists (select 1 from public.mail_receive where message_id = $1) as is_exists; """
       mail_in_receive = await fetch_one(query,msg_id)
       
-      # True if mail not exists, False if mail exists
-      if mail_in_receive: # Mail Not exists in table
-         query = """
-            SELECT NOT EXISTS (SELECT 1 FROM public.mail_trash WHERE message_id = $1)
-         """
+      # True if mail exists, False if mail not exists
+      if not mail_in_receive.get('is_exists'): # Mail not exists in table
+         query = """ select exists (select 1 from public.mail_trash where message_id = $1) as is_exists; """
          mail_in_trash = await fetch_one(query,msg_id)
-         return mail_in_trash
+         return mail_in_trash.get('is_exists') # True if mail exists, False if mail not exists
       else:
-         return mail_in_receive # Mail Exists in table
+         return mail_in_receive.get('is_exists') # Mail Exists in table
    except Exception as e:
       print(f"Error while checking if mail exists: {e}")
 

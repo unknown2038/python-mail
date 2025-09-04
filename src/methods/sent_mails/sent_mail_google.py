@@ -231,7 +231,16 @@ def _truncate(text: str, limit: int = 2000) -> str:
 def _send_gmail_sync(service, raw: str) -> str:
    try:
       sent = service.users().messages().send(userId="me", body={"raw": raw}).execute()
-      return sent["id"]
+      
+      # Read only the Message-Id header
+      meta = service.users().messages().get(
+         userId="me",
+         id=sent["id"],
+         format="metadata",
+         metadataHeaders=["Message-Id"]
+      ).execute()
+      headers = {h["name"]: h["value"] for h in meta.get("payload", {}).get("headers", [])}
+      return headers.get("Message-Id")
 
    except HttpError as e:
       # Google API error → serialize JSON and save
