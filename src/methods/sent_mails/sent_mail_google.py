@@ -143,6 +143,7 @@ def _build_mime_message_sync(
    cc: Optional[List[str]],
    bcc: Optional[List[str]],
    subject: str,
+   parent_message_id: str,
    text_body: Optional[str],
    html_body: Optional[str],
    attachments: Optional[List[str]],
@@ -164,6 +165,9 @@ def _build_mime_message_sync(
 
    msg["Subject"] = str(Header(subject, "utf-8"))
    msg["Message-ID"] = make_msgid()
+   if parent_message_id:
+      msg["In-Reply-To"] = parent_message_id
+      msg["References"] = parent_message_id   
 
    # Body part (alternative: text + html)
    alt = MIMEMultipart("alternative")
@@ -280,6 +284,7 @@ async def build_mime_message_async(
    cc: Optional[List[str]],
    bcc: Optional[List[str]],
    subject: str,
+   parent_message_id: str,
    text_body: Optional[str],
    html_body: Optional[str],
    attachments: Optional[List[str]],
@@ -292,6 +297,7 @@ async def build_mime_message_async(
       cc=cc,
       bcc=bcc,
       subject=subject,
+      parent_message_id=parent_message_id,
       text_body=text_body,
       html_body=html_body,
       attachments=attachments,
@@ -311,6 +317,7 @@ async def send_gmail_with_attachments_async(
    cc: Optional[Iterable[str]] = None,
    bcc: Optional[Iterable[str]] = None,
    subject: str,
+   parent_message_id: str,
    text_body: Optional[str] = None,
    html_body: Optional[str] = None,
    attachments: Optional[Iterable[str]] = None,
@@ -336,6 +343,7 @@ async def send_gmail_with_attachments_async(
       cc=cc_list,
       bcc=bcc_list,
       subject=subject,
+      parent_message_id=parent_message_id,
       text_body=text_body,
       html_body=html_body,
       attachments=att_list,

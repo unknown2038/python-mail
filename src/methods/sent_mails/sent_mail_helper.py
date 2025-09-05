@@ -127,6 +127,7 @@ async def get_save_mail_payload(request):
             'is_check': payload.get("is_check"),
             'is_approve': payload.get("is_approve"),
             'remark': payload.get("remark"),
+            'parent_message_id': payload.get("parent_message_id"),
          },
          "attachments": attachments
       }
@@ -173,7 +174,7 @@ async def save_whatsapp_mail_payload(request):
 async def send_mail_to_gmail(id: int):
    try:  
       query = """
-         select id, mail_id_name, from_id, to_ids, cc_ids, bcc_ids, subject, body from public.mail_sent where id = $1;
+         select id, mail_id_name, from_id, to_ids, cc_ids, bcc_ids, subject, body, parent_message_id from public.mail_sent where id = $1;
       """
       mail = await fetch_one(query, id)
       attachments = await fetch_sent_mail_attachment_file_paths(id, mail.get("mail_id_name"))
@@ -190,6 +191,7 @@ async def send_mail_to_gmail(id: int):
             cc=mail.get("cc_ids"),
             bcc=mail.get("bcc_ids"),
             subject=mail.get("subject"),
+            parent_message_id=mail.get("parent_message_id"),
             text_body=None,
             html_body=html_for_email,
             attachments=attachments,

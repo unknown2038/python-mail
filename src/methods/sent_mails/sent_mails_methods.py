@@ -89,8 +89,9 @@ async def save_draft_mail(input_object, attachments):
                path = $10, 
                "projectId" = $11,
                "sentById" = $12, 
-               mail_type = $13
-            where id = $14
+               mail_type = $13,
+               parent_message_id = $14,
+            where id = $15
             returning id;
          """
          mail_id = await execute_one_returning(query, 
@@ -107,6 +108,7 @@ async def save_draft_mail(input_object, attachments):
             input_object.get("projectId"), 
             input_object.get("sentById"), 
             input_object.get("mail_type"),
+            input_object.get("parent_message_id"),
             input_object.get("id"))
          
          if len(attachments) > 0:
@@ -116,8 +118,8 @@ async def save_draft_mail(input_object, attachments):
       else:
          # Save the draft mail
          query = """
-            insert into public.mail_sent (mail_id_name, from_id, to_ids, cc_ids, bcc_ids, subject, body, is_draft_mail, draft_mail_date, path, "projectId","sentById", mail_type)
-            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            insert into public.mail_sent (mail_id_name, from_id, to_ids, cc_ids, bcc_ids, subject, body, is_draft_mail, draft_mail_date, path, "projectId","sentById", mail_type, parent_message_id)
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             returning id;
          """
          mail_id = await execute_one_returning(query, 
@@ -133,7 +135,8 @@ async def save_draft_mail(input_object, attachments):
             input_object.get("path"), 
             input_object.get("projectId"), 
             input_object.get("sentById"), 
-            input_object.get("mail_type"))
+            input_object.get("mail_type"),
+            input_object.get("parent_message_id"))
 
          if len(attachments) > 0:
             await save_sent_mail_attachments(input_object, mail_id, attachments)
@@ -149,7 +152,7 @@ async def fetch_draft_mail_by_id(mail_id):
    try:
       query = """
          select 
-            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path,p.id as project_id, e.id as entry_by
+            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path,p.id as project_id, e.id as entry_by, sm.parent_message_id
             from public.mail_sent sm 
             left join public.projects p 
             on p.id = sm."projectId"
@@ -160,6 +163,8 @@ async def fetch_draft_mail_by_id(mail_id):
          where sm.id = $1;
       """
       mail = await fetch_one(query, mail_id)
+      print(mail_id)
+      print(mail)
       return dict(mail)
    except Exception as e:
       print(f"Error fetching draft mail by id: {e}")
@@ -230,8 +235,9 @@ async def check_mail(input_object, attachments):
             path = $10, 
             "projectId" = $11,
             "sentById" = $12, 
-            mail_type = $13
-         where id = $14
+            mail_type = $13,
+            parent_message_id = $14
+         where id = $15
          returning id;
       """
       
@@ -249,6 +255,7 @@ async def check_mail(input_object, attachments):
          input_object.get("projectId"), 
          input_object.get("sentById"), 
          input_object.get("mail_type"),
+         input_object.get("parent_message_id"),
          input_object.get("id"))
       
       if len(attachments) > 0:
