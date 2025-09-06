@@ -400,3 +400,22 @@ async def fetch_mail_details(message_id: str):
    except Exception as e:
       print(f"Error while fetching mail details: {e}")
       return None
+
+
+async def fetch_receive_mail(id: int):
+   try:
+      query = """
+         select id, from_id, mail_id, cc_ids, bcc_ids, subject, message_id from public.mail_receive 
+         where is_self_sent_mail = false
+            and id = $1;
+         """
+      mail_details = await fetch_one(query,id)
+      if mail_details:  
+         mail =  dict(mail_details)
+         mail['attachments'] = []
+         return mail
+      else:
+         return None
+   except Exception as e:
+      print(f"Error while fetching mail details: {e}")
+      return None

@@ -8,6 +8,7 @@ from src.methods.receive_mails.receive_mails_methods import (
     fetch_mail_creds,
     fetch_gmail_mails,
     fetch_mail_details,
+    fetch_receive_mail,
     fetch_receive_mails,
     move_to_trash,
     remove_from_trash,
@@ -178,4 +179,14 @@ async def is_mail_not_exists():
             return jsonify(mail_in_receive.get('is_exists')) # Mail Exists in table
     except Exception as e:
         print(f"Error checking if mail not exists: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@receive_mail_bp.route("/receive/fetch-mail-for-reply", methods=["GET"])
+async def fetch_mail_for_reply():
+    try:
+        id = request.args.get("id")
+        return await fetch_receive_mail(int(id))
+    except Exception as e:
+        print(f"Error fetching mail for reply: {e}")
         return jsonify({"error": str(e)}), 500

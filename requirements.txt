@@ -1,6 +1,6 @@
 Flask==3.0.3
 Flask[async]==3.0.3
-psycopg2==2.9.9
+psycopg2==2.9.10
 SQLAlchemy==2.0.41
 alembic==1.13.1
 google==3.0.0
