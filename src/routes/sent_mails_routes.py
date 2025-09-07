@@ -4,7 +4,7 @@ from pathlib import Path
 from quart import Blueprint, json, request, jsonify, send_file
 import config
 from src.methods.sent_mails.sent_mail_google import fetch_mail_creds
-from src.methods.sent_mails.sent_mails_methods import check_mail, check_wp_mail, fetch_draft_mail_by_id, fetch_sent_approval_mails, fetch_sent_draft_mails, fetch_whatsapp_mail_by_id, remove_sent_draft_mails, save_draft_mail, save_whatsapp_mail
+from src.methods.sent_mails.sent_mails_methods import check_mail, check_wp_mail, fetch_draft_mail_by_id, fetch_sent_approval_mails, fetch_sent_draft_mails, fetch_sent_record_mails, fetch_whatsapp_mail_by_id, remove_sent_draft_mails, save_draft_mail, save_whatsapp_mail
 from src.methods.sent_mails.sent_mail_helper import fetch_compose_mail_from_list, fetch_mail_attachments, get_save_mail_payload, save_whatsapp_mail_payload, to_int_or_none
 
 sent_mail_bp = Blueprint("sent_mail_bp", __name__)
@@ -31,6 +31,23 @@ async def get_sent_approval_mails():
             date_filter = datetime.strptime(date_str, "%Y-%m-%d")
             approval_mails = await fetch_sent_approval_mails(mail_id_name, date_filter)
             return jsonify(approval_mails), 200
+      else:
+         return jsonify({"error": "No date provided"}), 400
+   except Exception as e:
+      print(f"Error fetching sent mails: {e}")
+      return jsonify({"error": e}), 400
+
+@sent_mail_bp.route("/sent/sent-record-mails", methods=["GET"])
+async def get_sent_record_mails():
+   try:
+      mail_id_name = request.args.get("mail_id_name")
+      user_id = request.args.get("user_id")
+      date_str = request.args.get("date")  # Expecting format: YYYY-MM-DD
+      
+      if date_str:
+            date_filter = datetime.strptime(date_str, "%Y-%m-%d")
+            record_mails = await fetch_sent_record_mails(mail_id_name, date_filter, user_id)
+            return jsonify(record_mails), 200
       else:
          return jsonify({"error": "No date provided"}), 400
    except Exception as e:
@@ -106,6 +123,7 @@ async def check_sent_mail():
 async def store_whatsapp_mail():
    try:
       input_data = await save_whatsapp_mail_payload(request)
+      print(input_data)
       return await save_whatsapp_mail(input_data["input_object"], input_data["attachments"])
    except Exception as e:
       print(f"Error saving draft mail: {e}")
@@ -127,6 +145,7 @@ async def get_whatsapp_mail():
 async def check_whatsapp_mail():
    try:
       input_data = await save_whatsapp_mail_payload(request)
+      print(input_data)
       return await check_wp_mail(input_data["input_object"], input_data["attachments"])
    except Exception as e:
       print(f"Error checking sent mail: {e}")

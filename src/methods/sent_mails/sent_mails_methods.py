@@ -41,7 +41,7 @@ async def fetch_sent_approval_mails(mail_id_name, date_filter):
    try:
       query = """
          select 
-            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message,
+            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message,
             (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
             (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
             p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
@@ -70,6 +70,41 @@ async def fetch_sent_approval_mails(mail_id_name, date_filter):
       print(f"Error fetching sent mail approval list: {e}")
       return jsonify({"error": e}), 400
 
+
+async def fetch_sent_record_mails(mail_id_name, date_filter, user_id):
+   try:
+      query = """
+         select 
+            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.gmail_remark,
+            (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
+            (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
+            p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
+            from public.mail_sent sm 
+            left join public.projects p 
+            on p.id = sm."projectId"
+            left join public.project_client_details pcd
+            on pcd.id = p."projectClientId"
+            left join public.employees e
+            on e.id = sm."sentById"
+            left join public.employee_job_details ejd
+            on ejd.id = e."detailsId"
+            left join public.employees checker
+            on checker.id = sm."checkById"
+            left join public.employee_job_details checkerDetails
+            on checkerDetails.id = checker."detailsId"
+         where sm.status <> 'In Queue'
+            and (sm.mail_id_name = $1 or sm.mail_type = 'WHATSAPP')
+            and sm."createdAt"::date = $2
+            and e.id = $3
+         order by sm."createdAt" DESC;
+         """
+      mails = await fetch_all(query, mail_id_name, date_filter, int(user_id))
+      return [dict(r) for r in mails]
+   except Exception as e:
+      print(f"Error fetching sent mail approval list: {e}")
+      return jsonify({"error": e}), 400
+   
+
 async def save_draft_mail(input_object, attachments):
    try:
       mail_id = None
@@ -90,7 +125,7 @@ async def save_draft_mail(input_object, attachments):
                "projectId" = $11,
                "sentById" = $12, 
                mail_type = $13,
-               parent_message_id = $14,
+               parent_message_id = $14
             where id = $15
             returning id;
          """
@@ -163,8 +198,6 @@ async def fetch_draft_mail_by_id(mail_id):
          where sm.id = $1;
       """
       mail = await fetch_one(query, mail_id)
-      print(mail_id)
-      print(mail)
       return dict(mail)
    except Exception as e:
       print(f"Error fetching draft mail by id: {e}")
@@ -335,7 +368,7 @@ async def check_wp_mail(input_object, attachments):
          input_object.get("mail_type"), 
          input_object.get("message_type"), 
          input_object.get("projectId"), 
-         input_object.get("checkById"), 
+         input_object.get("sentById"), 
          input_object.get("path"),
          input_object.get("id"))
       
@@ -412,7 +445,7 @@ async def save_whatsapp_mail(input_object, attachments):
             input_object.get("mail_type"), 
             input_object.get("message_type"), 
             input_object.get("projectId"), 
-            input_object.get("checkById"), 
+            input_object.get("sentById"), 
             input_object.get("path"),
             input_object.get("id"))
          
@@ -436,7 +469,7 @@ async def save_whatsapp_mail(input_object, attachments):
             input_object.get("mail_type"), 
             input_object.get("message_type"), 
             input_object.get("projectId"), 
-            input_object.get("checkById"), 
+            input_object.get("sentById"), 
             input_object.get("path"))
 
          if len(attachments) > 0:
