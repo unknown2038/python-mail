@@ -188,7 +188,6 @@ async def fetch_mail_from_gmail(username, client_id, client_secret, refresh_toke
             for mail_id in sent_mails:
                mail_content = extract_mail_content(mail_id, mail_creds)
                all_mails.append({ "content": mail_content, "is_sent": True})
-               mail_creds.store(mail_id, "-FLAGS", "\\Seen")
    
          return all_mails
    
