@@ -19,7 +19,7 @@ def create_app():
     @app.before_serving
     async def startup():
         await get_db_pool()
-        # init_scheduler()
+        init_scheduler()
         # await cron_fetch_job()
 
     @app.after_serving

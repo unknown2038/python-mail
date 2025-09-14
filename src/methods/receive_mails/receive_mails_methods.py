@@ -166,13 +166,14 @@ async def fetch_mail_from_gmail(username, client_id, client_secret, refresh_toke
          access_token = get_google_access_token(client_id, client_secret, refresh_token)
          auth_string = f"user={username}\x01auth=Bearer {access_token.token}\x01\x01"
          mail_creds.authenticate('XOAUTH2', lambda x: auth_string.encode('utf-8'))
-         # date = (datetime.datetime.today() - datetime.timedelta(days=0)).strftime("%d-%b-%Y")
+         # date = (datetime.datetime.today() - datetime.timedelta(days=1)).strftime("%d-%b-%Y")
          
          # INBOX unseen mails
          mail_creds.select("INBOX")
          status, messages = mail_creds.search(None, f'(UNSEEN ON "{date_filter}")') 
          
-         # status, messages = mail_creds.select("INBOX") 
+         # print(f"date_filter: {date}")
+         # status, messages = mail_creds.search(None, f'(ON "{date}")') 
          if status == 'OK':
             inbox_mails = messages[0].split()[::1]
             for mail_id in inbox_mails:
