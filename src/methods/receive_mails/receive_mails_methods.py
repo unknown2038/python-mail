@@ -419,3 +419,88 @@ async def fetch_receive_mail(id: int):
    except Exception as e:
       print(f"Error while fetching mail details: {e}")
       return None
+
+async def mail_report(start_date, end_date, hod_ids, project_ids):
+   try:
+      if len(hod_ids) > 0:
+         query = """
+            select m.id,m.mail_id_name, m.from_id, m.to_ids, m.cc_ids, m.bcc_ids, m.subject, m.message_id, m.receive_date, p.id as project_id, (p.project_name || ' - ' || pc.first_name || ' ' || pc.last_name ) as project_name,
+               case
+                  when m.we_are_in is not null then m.we_are_in
+                  else 'cc/bcc'
+               end as we_are_in,
+               m.sub_reply_date as current_reply_date, (sub_replier_details.first_name || ' ' || sub_replier_details.last_name) as current_replier_name, sub_replier.id as current_replier_id, m.sub_reply_status as current_reply_status,
+               m.final_reply_date as final_reply_date, (final_replier_details.first_name || ' ' || final_replier_details.last_name) as final, final_replier.id as final_replier_id, m.final_reply_status as final_reply_status
+               from public.mail_receive m
+                  left join public.mail_receive_project_mails_projects mp on m.id = mp."mailReceiveId"
+                  left join public.projects p on mp."projectsId" = p.id
+                  left join public.project_client_details pc on p."projectClientId" = pc.id
+                  left join public.employees sub_replier on sub_replier.id = m."subReplyById"
+                  left join public.employee_job_details sub_replier_details on sub_replier_details.id = sub_replier."detailsId"
+                  left join public.employees final_replier on final_replier.id = m."finalReplyById"
+                  left join public.employee_job_details final_replier_details on final_replier_details.id = final_replier."detailsId"
+            where m.is_self_sent_mail = false
+               and m.is_removed = false
+               and (m.receive_date >= $1 and m.receive_date <= $2)
+               and exists (
+                  select 1 from public.projects_poc_employees ph
+                  where ph."projectsId" = p.id and ph."employeesId" any($3)
+               )
+               group by m.id, m.mail_id_name, from_id, to_ids, cc_ids, bcc_ids, subject, message_id,
+               receive_date, p.id, pc.first_name, pc.last_name,
+               sub_replier.id, sub_replier_details.first_name, sub_replier_details.last_name,
+               final_replier.id, final_replier_details.first_name, final_replier_details.last_name;
+         """
+         mails = await fetch_all(query, start_date, end_date, hod_ids)
+         return [dict(r) for r in mails]
+      
+      elif len(project_ids) > 0:
+         query = """
+            select m.id,m.mail_id_name, m.from_id, m.to_ids, m.cc_ids, m.bcc_ids, m.subject, m.message_id, m.receive_date, p.id as project_id, (p.project_name || ' - ' || pc.first_name || ' ' || pc.last_name ) as project_name,
+               case
+                  when m.we_are_in is not null then m.we_are_in
+                  else 'cc/bcc'
+               end as we_are_in, 
+               m.sub_reply_date as current_reply_date, (sub_replier_details.first_name || ' ' || sub_replier_details.last_name) as current_replier_name, sub_replier.id as current_replier_id, m.sub_reply_status as current_reply_status,
+               m.final_reply_date as final_reply_date, (final_replier_details.first_name || ' ' || final_replier_details.last_name) as final, final_replier.id as final_replier_id, m.final_reply_status as final_reply_status
+               from public.mail_receive m
+                  left join public.mail_receive_project_mails_projects mp on m.id = mp."mailReceiveId"
+                  left join public.projects p on mp."projectsId" = p.id
+                  left join public.project_client_details pc on p."projectClientId" = pc.id
+                  left join public.employees sub_replier on sub_replier.id = m."subReplyById"
+                  left join public.employee_job_details sub_replier_details on sub_replier_details.id = sub_replier."detailsId"
+                  left join public.employees final_replier on final_replier.id = m."finalReplyById"
+                  left join public.employee_job_details final_replier_details on final_replier_details.id = final_replier."detailsId"
+            where m.is_self_sent_mail = false
+               and m.is_removed = false
+               and (m.receive_date >= $1 and m.receive_date <= $2);
+               and p.id any($3);
+         """
+         mails = await fetch_all(query, start_date, end_date, project_ids)
+         return [dict(r) for r in mails]
+      else:
+         query = """
+            select m.id,m.mail_id_name, m.from_id, m.to_ids, m.cc_ids, m.bcc_ids, m.subject, m.message_id, m.receive_date, p.id as project_id, (p.project_name || ' - ' || pc.first_name || ' ' || pc.last_name ) as project_name,
+               case
+                  when m.we_are_in is not null then m.we_are_in
+                  else 'cc/bcc'
+               end as we_are_in, 
+               m.sub_reply_date as current_reply_date, (sub_replier_details.first_name || ' ' || sub_replier_details.last_name) as current_replier_name, sub_replier.id as current_replier_id, m.sub_reply_status as current_reply_status,
+               m.final_reply_date as final_reply_date, (final_replier_details.first_name || ' ' || final_replier_details.last_name) as final, final_replier.id as final_replier_id, m.final_reply_status as final_reply_status
+               from public.mail_receive m
+                  left join public.mail_receive_project_mails_projects mp on m.id = mp."mailReceiveId"
+                  left join public.projects p on mp."projectsId" = p.id
+                  left join public.project_client_details pc on p."projectClientId" = pc.id
+                  left join public.employees sub_replier on sub_replier.id = m."subReplyById"
+                  left join public.employee_job_details sub_replier_details on sub_replier_details.id = sub_replier."detailsId"
+                  left join public.employees final_replier on final_replier.id = m."finalReplyById"
+                  left join public.employee_job_details final_replier_details on final_replier_details.id = final_replier."detailsId"
+            where m.is_self_sent_mail = false
+               and m.is_removed = false
+               and (m.receive_date >= $1 and m.receive_date <= $2);
+         """
+         mails = await fetch_all(query, start_date, end_date)
+         return [dict(r) for r in mails]
+   except Exception as e:
+      print(f"Error getting mail report: {e}")
+      return jsonify({"error": e}), 400

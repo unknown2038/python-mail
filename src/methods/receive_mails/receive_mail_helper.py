@@ -48,15 +48,14 @@ def mail_object(mail_content, is_sent, username, name):
       cc_ids = split_emails(mail_content.get('Cc'))
       bcc_ids = split_emails(mail_content.get('Bcc'))
       we_are_in = None
-      if username in to_ids:
+      if any(email.utils.parseaddr(e)[1].lower() in username for e in to_ids):
          we_are_in = 'to'
-      elif username in cc_ids:
+      elif any(email.utils.parseaddr(e)[1].lower() in username for e in cc_ids):
          we_are_in = 'cc'
-      elif username in bcc_ids:
+      elif any(email.utils.parseaddr(e)[1].lower() in username for e in bcc_ids):
          we_are_in = 'bcc'
       else:
          we_are_in = None
-      
       
       return {
          "mail_id": username,

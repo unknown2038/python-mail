@@ -51,8 +51,7 @@ $ deactivate
 
 ### flask app start script in pm2
 ```bash
-$ cd /mnt/data/Flask
-$ pm2 start app.py --name "flask-app" --interpreter /mnt/data/Flask/venv/bin/python3
+$ pm2 start "hypercorn app:app --bind 127.0.0.1:8001 --workers 1 --log-level debug" --name python-app
 ```
 
 

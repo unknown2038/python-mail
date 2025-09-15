@@ -10,11 +10,12 @@ from src.methods.receive_mails.receive_mails_methods import (
     fetch_mail_details,
     fetch_receive_mail,
     fetch_receive_mails,
+    mail_report,
     move_to_trash,
     remove_from_trash,
     search_any_mail,
 )
-from datetime import datetime
+from datetime import datetime, time
 
 
 receive_mail_bp = Blueprint("receive_mail_bp", __name__)
@@ -190,3 +191,37 @@ async def fetch_mail_for_reply():
     except Exception as e:
         print(f"Error fetching mail for reply: {e}")
         return jsonify({"error": str(e)}), 500
+
+@receive_mail_bp.route("/receive/mail-report", methods=["GET"])
+async def get_mail_report():
+    try:
+        start_date = request.args.get("start_date")
+        
+        if start_date:
+            start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            start_date = datetime.combine(start_date.date(), time.min)  # 00:00:00
+        else:
+            return jsonify({"error": "Start date is required"}), 400
+        end_date = request.args.get("end_date")
+        if end_date:
+            end_date = datetime.strptime(end_date, "%Y-%m-%d")
+            end_date = datetime.combine(end_date.date(), time.max)  # 23:59:59
+        else:
+            return jsonify({"error": "End date is required"}), 400
+        
+        hod_ids = request.args.get("hod_ids")
+        project_ids = request.args.get("project_ids")   
+        if hod_ids:
+            hod_ids = [int(x) for x in hod_ids.split(",") if x.strip().isdigit()]
+        else:
+            hod_ids = []
+            
+        if project_ids:
+            project_ids = [int(x) for x in project_ids.split(",") if x.strip().isdigit()]
+        else:
+            project_ids = []
+        return await mail_report(start_date, end_date, hod_ids, project_ids)
+
+    except Exception as e:
+        print(f"Error getting sent mail report: {e}")
+        return jsonify({"error": e}), 400

@@ -313,6 +313,9 @@ async def check_mail(input_object, attachments):
                'Approved',
                input_object.get("id"))
             
+            if input_object.get("parent_message_id"):
+               await update_mail_reply_status(input_object.get("parent_message_id"), len(attachments),input_object.get("sentById"))
+               
             return jsonify({"message": "Mail approved successfully" }), 200
          else:
             remark_query = """
@@ -341,6 +344,49 @@ async def check_mail(input_object, attachments):
    except Exception as e:
       print(f"Error checking mail: {e}")
       return jsonify({"error": e}), 400
+
+async def update_mail_reply_status(message_id, attachments_count, sent_by_id):
+   try:
+      exists_receive_query = """
+         select sub_reply_date,sub_reply_status,final_reply_date,final_reply_status, "subReplyById","finalReplyById" from public.mail_receive where message_id = $1;
+      """
+      exists = await fetch_one(exists_receive_query, message_id)
+      if attachments_count > 0:
+         query = """
+            update public.mail_receive set 
+               sub_reply_date = $1,
+               sub_reply_status = $2,
+               final_reply_date = $3,
+               final_reply_status = $4,
+               subReplyById = $5,
+               finalReplyById = $6
+            where message_id = $7;
+         """
+         await execute_one(query, 
+            datetime.now() if exists.get("sub_reply_date") is None else exists.get("sub_reply_date"), 
+            'Completed', 
+            datetime.now(), 
+            'Completed', 
+            sent_by_id if exists.get("subReplyById") is None else exists.get("subReplyById"), 
+            sent_by_id, 
+            message_id
+         )
+      else:
+         query = """
+            update public.mail_receive set 
+               sub_reply_date = $1,
+               sub_reply_status = $2,
+               subReplyById = $3
+            where message_id = $4;
+         """
+         await execute_one(query, 
+            datetime.now(), 
+            'Data Pending', 
+            sent_by_id,
+            message_id
+         )
+   except Exception as e:
+      print(f"Error updating mail reply status: {e}")
 
 async def check_wp_mail(input_object, attachments):
    try:
@@ -414,8 +460,6 @@ async def check_wp_mail(input_object, attachments):
    except Exception as e:
       print(f"Error checking whatsapp mail: {e}")
       return jsonify({"error": e}), 400
-
-
 
 async def save_whatsapp_mail(input_object, attachments):
    try:

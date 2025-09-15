@@ -10,8 +10,8 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 def create_app():
     app = Quart(__name__)
-    # app = cors(app, allow_origin="*")  # Allow all origins
-    app.asgi_app = ProxyHeadersMiddleware(app.asgi_app, trusted_hosts=["*"])
+    app = cors(app, allow_origin="*")  # Allow all origins
+    # app.asgi_app = ProxyHeadersMiddleware(app.asgi_app, trusted_hosts=["*"])
 
     app.register_blueprint(receive_mail_bp)
     app.register_blueprint(sent_mail_bp)
@@ -19,7 +19,7 @@ def create_app():
     @app.before_serving
     async def startup():
         await get_db_pool()
-        init_scheduler()
+        # init_scheduler()
         # await cron_fetch_job()
 
     @app.after_serving
@@ -38,8 +38,8 @@ app = create_app()
 
 # Run the app
 if __name__ == "__main__":
-    # app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG) 
-    app.run(host=getattr(config, "HOST", "127.0.0.1"),
-            port=getattr(config, "PORT", 8000),
-            debug=getattr(config, "DEBUG", False))
+    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG) 
+    # app.run(host=getattr(config, "HOST", "127.0.0.1"),
+    #         port=getattr(config, "PORT", 8001),
+    #         debug=getattr(config, "DEBUG", True))
 
