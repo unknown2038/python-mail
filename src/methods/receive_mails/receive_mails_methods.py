@@ -33,7 +33,7 @@ async def fetch_receive_mails(user_id, mail_id_name, date_filter, is_self_sent, 
          mails = await fetch_all(query,mail_id_name, True, start_dt, end_dt)
          return [dict(r) for r in mails]
       else:
-         if employee['role'] == 'Admin' or employee['department'] == 'MDO' or employee['department'] == 'Management':
+         if employee['role'] == 'Admin' or employee['department'] == 'MDO' or employee['department'] == 'Management' or employee['role'] == 'Managing Director' or employee['role'] == 'COO':
             query = """
                SELECT *
                   FROM (

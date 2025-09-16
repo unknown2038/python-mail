@@ -8,6 +8,7 @@ from quart import jsonify
 
 import config
 from database.db_pool import execute_one, execute_one_returning, executemany, fetch_all, fetch_one
+from src.methods.employee_methods import fetch_employee_by_id
 from src.methods.sent_mails.sent_mail_helper import fetch_sent_mail_attachment_file_paths, save_sent_mail_attachments, sent_to_gmail_queue, to_int_or_none
 
 
@@ -73,37 +74,63 @@ async def fetch_sent_approval_mails(mail_id_name, date_filter):
 
 async def fetch_sent_record_mails(mail_id_name, date_filter, user_id):
    try:
-      query = """
-         select 
-            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.gmail_remark,
-            (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
-            (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
-            p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
-            from public.mail_sent sm 
-            left join public.projects p 
-            on p.id = sm."projectId"
-            left join public.project_client_details pcd
-            on pcd.id = p."projectClientId"
-            left join public.employees e
-            on e.id = sm."sentById"
-            left join public.employee_job_details ejd
-            on ejd.id = e."detailsId"
-            left join public.employees checker
-            on checker.id = sm."checkById"
-            left join public.employee_job_details checkerDetails
-            on checkerDetails.id = checker."detailsId"
-         where sm.status <> 'In Queue'
-            and (sm.mail_id_name = $1 or sm.mail_type = 'WHATSAPP')
-            and sm."createdAt"::date = $2
-            and e.id = $3
-         order by sm."createdAt" DESC;
-         """
-      mails = await fetch_all(query, mail_id_name, date_filter, int(user_id))
-      return [dict(r) for r in mails]
+      employee = await fetch_employee_by_id(int(user_id))
+      if employee['role'] == 'Admin' or employee['role'] == 'Managing Director' or  employee['role'] == 'Process Coordinator' or employee['role'] == 'COO' or ((employee['department'] == 'MDO' or employee['department'] == 'Management') and employee['role'] == 'HOD'):
+         query = """
+            select 
+               sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.gmail_remark,
+               (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
+               (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
+               p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
+               from public.mail_sent sm 
+               left join public.projects p 
+               on p.id = sm."projectId"
+               left join public.project_client_details pcd
+               on pcd.id = p."projectClientId"
+               left join public.employees e
+               on e.id = sm."sentById"
+               left join public.employee_job_details ejd
+               on ejd.id = e."detailsId"
+               left join public.employees checker
+               on checker.id = sm."checkById"
+               left join public.employee_job_details checkerDetails
+               on checkerDetails.id = checker."detailsId"
+            where (sm.mail_id_name = $1 or sm.mail_type = 'WHATSAPP')
+               and sm."createdAt"::date = $2
+            order by sm."createdAt" DESC;
+            """
+         mails = await fetch_all(query, mail_id_name, date_filter)
+         return [dict(r) for r in mails]
+      else:
+         query = """
+            select 
+               sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.gmail_remark,
+               (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
+               (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
+               p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
+               from public.mail_sent sm 
+               left join public.projects p 
+               on p.id = sm."projectId"
+               left join public.project_client_details pcd
+               on pcd.id = p."projectClientId"
+               left join public.employees e
+               on e.id = sm."sentById"
+               left join public.employee_job_details ejd
+               on ejd.id = e."detailsId"
+               left join public.employees checker
+               on checker.id = sm."checkById"
+               left join public.employee_job_details checkerDetails
+               on checkerDetails.id = checker."detailsId"
+            where (sm.mail_id_name = $1 or sm.mail_type = 'WHATSAPP')
+               and sm."createdAt"::date = $2
+               and e.id = $3
+            order by sm."createdAt" DESC;
+            """
+         mails = await fetch_all(query, mail_id_name, date_filter, int(user_id))
+         return [dict(r) for r in mails]
    except Exception as e:
       print(f"Error fetching sent mail approval list: {e}")
       return jsonify({"error": e}), 400
-   
 
 async def save_draft_mail(input_object, attachments):
    try:
@@ -358,8 +385,8 @@ async def update_mail_reply_status(message_id, attachments_count, sent_by_id):
                sub_reply_status = $2,
                final_reply_date = $3,
                final_reply_status = $4,
-               subReplyById = $5,
-               finalReplyById = $6
+               "subReplyById" = $5,
+               "finalReplyById" = $6
             where message_id = $7;
          """
          await execute_one(query, 
@@ -376,7 +403,7 @@ async def update_mail_reply_status(message_id, attachments_count, sent_by_id):
             update public.mail_receive set 
                sub_reply_date = $1,
                sub_reply_status = $2,
-               subReplyById = $3
+               "subReplyById" = $3
             where message_id = $4;
          """
          await execute_one(query, 
