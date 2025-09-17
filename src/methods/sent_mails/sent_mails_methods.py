@@ -42,7 +42,7 @@ async def fetch_sent_approval_mails(mail_id_name, date_filter):
    try:
       query = """
          select 
-            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message,
+            sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::timestamp as entry_date, sm.status,sm.mail_type,sm.status,sm.approval_rejection_date, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message,
             (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
             (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
             p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
@@ -66,7 +66,7 @@ async def fetch_sent_approval_mails(mail_id_name, date_filter):
          order by sm."createdAt" DESC;
          """
       mails = await fetch_all(query, mail_id_name, date_filter)
-      return [dict(r) for r in mails]
+      return process_record_mails(mails)
    except Exception as e:
       print(f"Error fetching sent mail approval list: {e}")
       return jsonify({"error": e}), 400
@@ -78,7 +78,7 @@ async def fetch_sent_record_mails(mail_id_name, date_filter, user_id):
       if employee['role'] == 'Admin' or employee['role'] == 'Managing Director' or  employee['role'] == 'Process Coordinator' or employee['role'] == 'COO' or ((employee['department'] == 'MDO' or employee['department'] == 'Management') and employee['role'] == 'HOD'):
          query = """
             select 
-               sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.gmail_remark,
+               sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::timestamp as entry_date, sm.status,sm.approval_rejection_date::timestamp, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.gmail_remark,
                (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
                (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
                p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
@@ -100,11 +100,11 @@ async def fetch_sent_record_mails(mail_id_name, date_filter, user_id):
             order by sm."createdAt" DESC;
             """
          mails = await fetch_all(query, mail_id_name, date_filter)
-         return [dict(r) for r in mails]
+         return process_record_mails(mails)
       else:
          query = """
             select 
-               sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::date as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.gmail_remark,
+               sm.id, sm.mail_id_name, sm.from_id, sm.to_ids, sm.cc_ids, sm.bcc_ids, sm.subject, sm.body, sm.path, sm."createdAt"::timestamp as entry_date, sm.status,sm.approval_rejection_date, sm.approval_rejection_remark, sm.mail_type, sm.whatsapp_numbers, sm.whatsapp_group, sm.is_whatsapp_mail, sm.message, sm.gmail_remark,
                (checkerDetails.first_name || ' ' || checkerDetails.last_name) AS check_by_name, checker.id as check_by_id, 
                (ejd.first_name || ' ' || ejd.last_name) AS entry_by_name, e.id as entry_by_id, 
                p.id as project_id, (p.project_name || ' - ' || pcd.first_name || ' ' || pcd.last_name) as project_name
@@ -127,10 +127,18 @@ async def fetch_sent_record_mails(mail_id_name, date_filter, user_id):
             order by sm."createdAt" DESC;
             """
          mails = await fetch_all(query, mail_id_name, date_filter, int(user_id))
-         return [dict(r) for r in mails]
+         return process_record_mails(mails)
    except Exception as e:
       print(f"Error fetching sent mail approval list: {e}")
       return jsonify({"error": e}), 400
+
+def process_record_mails(mails):
+   return [
+      {**dict(r), "entry_date": r["entry_date"].strftime("%Y-%m-%d %H:%M") if r["entry_date"] else None,  "approval_rejection_date": r["approval_rejection_date"].strftime("%Y-%m-%d %H:%M") if r["approval_rejection_date"] else None }
+      for r in mails
+   ]
+
+
 
 async def save_draft_mail(input_object, attachments):
    try:
